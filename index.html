@@ -610,7 +610,7 @@ const HEROES={
       extras:k=>[part(B(.2,.5,.05),0xf2efe6,0,k.hip+k.th/2+.02,.2),part(B(.22,.09,.06),0xc8402f,0,k.hip+k.th-.06,.21),part(CY(.42,.42,.05,10),0x0f0f14,0,k.top,0),part(CY(.27,.27,.46,10),0x0f0f14,0,k.top+.25,0),part(CY(.28,.28,.09,10),0xc8402f,0,k.top+.08,0),part(B(.3,.06,.06),0x211c1c,0,k.hy-.12,k.hz)]}},
 };
 if(!save.unlocked||typeof save.unlocked!=='object')save.unlocked={};
-if(![0,1,2].includes(save.zoom))save.zoom=1;if(typeof save.music!=='boolean')save.music=true;if(typeof save.sfx!=='boolean')save.sfx=true;
+if(typeof save.music!=='boolean')save.music=true;if(typeof save.sfx!=='boolean')save.sfx=true;
 for(const id in HEROES)if(!HEROES[id].lock)save.unlocked[id]=1;
 if(!HEROES[save.hero]||!save.unlocked[save.hero])save.hero='digger';
 
@@ -636,7 +636,7 @@ function audioInit(){
 }
 function applyVolumes(){if(!AC)return;const t=AC.currentTime;
   sfxBus.gain.setTargetAtTime(save.mute||save.sfx===false?0:.6,t,.03);
-  musBus.gain.setTargetAtTime(save.mute||save.music===false?0:(G.state==='pause'||G.state==='levelup'||G.state==='reveal'?.18:.4),t,.25);}
+  musBus.gain.setTargetAtTime(save.mute||save.music===false?0:(G.state==='pause'||G.state==='levelup'||G.state==='reveal'?.6:1.5),t,.25);}
 const sendRev=(g,amt)=>{if(amt){const s=AC.createGain();s.gain.value=amt;g.connect(s);s.connect(revIn);}};
 // one oscillator voice: o = {to, rev, attack, filt (lowpass Hz), ft (filter type), q, sweep (filter target), dist, vib}
 function tone(f,dur,type,vol,slide,delay,o){
@@ -704,31 +704,58 @@ const MELODY=[[0,74,6],[6,77,2],[8,76,4],[12,74,4],[16,74,6],[22,70,2],[24,72,4]
 const music={on:false,step:0,next:0,timer:null,mode:'menu',
   start(){if(!AC||this.on)return;this.on=true;this.step=0;this.next=AC.currentTime+.12;this.timer=setInterval(()=>this.pump(),25);},
   stop(){this.on=false;clearInterval(this.timer);},
-  bpm(){return this.mode==='boss'?128:this.mode==='menu'?92:this.mode==='hot'?118:110;},
+  bpm(){return this.mode==='boss'?128:this.mode==='menu'?96:this.mode==='hot'?118:110;},
   pump(){if(!AC||AC.state!=='running')return;const ahead=AC.currentTime+.16;if(this.next<AC.currentTime-.2)this.next=AC.currentTime+.02;
     while(this.next<ahead){this.play(this.step,this.next);this.next+=60/this.bpm()/4;this.step++;}},
   // mode follows the game: menu, calm (first minute and a half), hot (later or a big crowd), boss
   update(){let m='menu';if(G.state!=='menu'&&G.state!=='dead'){m=G.t>90||enemies.length>130?'hot':'calm';for(const e of enemies)if(e.boss&&!e.dead){m='boss';break;}}this.mode=m;},
+  // Levels are set for small phone speakers too: every part has energy in the 300 Hz - 3 kHz range, the deep bass
+  // is doubled an octave up so it is still heard where the speaker cannot play the low note.
   play(st,t){
     const s16=st%16,bar=Math.floor(st/16)%4,s64=st%64,prog=PROG[this.mode==='boss'?'boss':'night'],[root,ch]=prog[bar],spb=60/this.bpm()/4,M=this.mode,to={to:musBus};
-    const at=d=>Math.max(0,t+d-AC.currentTime);
-    // pad: the chord, swelling over each bar
-    if(s16===0){for(const iv of ch)for(const det of [-7,7])tone(NOTE(root+12+iv),spb*16*1.05,'sawtooth',M==='menu'?.035:.028,0,at(0),{to:musBus,filt:M==='boss'?1400:900,attack:spb*4,hold:spb*8,det,rev:.5});}
-    // arpeggio over chord tones, quiet, with reverb
-    const arp=[0,1,2,1,0,2,1,2];if(M==='menu'?s16%2===0:true){const iv=ch[arp[(st>>(M==='menu'?1:0))%8]],oct=(s16>>2)%2?36:24;tone(NOTE(root+oct+iv),spb*1.8,M==='boss'?'square':'triangle',M==='menu'?.03:.026,0,at(0),{to:musBus,filt:M==='boss'?2400:3200,rev:.35});}
-    if(M==='menu'){if(s16===0&&bar===0)tone(NOTE(root-12),spb*64,'sine',.07,0,at(0),{to:musBus,attack:1.5,hold:spb*40});return;}
-    // bass: driving eighths with an octave jump
-    if(s16%2===0){const pat=[0,0,12,0,0,7,12,0],n=root-12+pat[s16>>1];tone(NOTE(n),spb*1.7,'sawtooth',M==='boss'?.12:.1,0,at(0),{to:musBus,filt:M==='boss'?700:520,q:3,dist:M==='boss'?1:0});tone(NOTE(n-12),spb*1.7,'sine',.11,0,at(0),to);}
+    const at=()=>Math.max(0,t-AC.currentTime);
+    // pad: the chord swelling over each bar
+    if(s16===0){for(const iv of ch)for(const det of [-8,8])tone(NOTE(root+12+iv),spb*16*1.05,'sawtooth',.045,0,at(),{to:musBus,filt:M==='boss'?2200:1700,attack:spb*3,hold:spb*9,det,rev:.45});}
+    // arpeggio over chord tones
+    const arp=[0,1,2,1,0,2,1,2];
+    if(M==='menu'?s16%2===0:true){const iv=ch[arp[(st>>(M==='menu'?1:0))%8]],oct=(s16>>2)%2?36:24;tone(NOTE(root+oct+iv),spb*1.9,M==='boss'?'square':'triangle',M==='menu'?.1:.06,0,at(),{to:musBus,filt:M==='boss'?3000:4200,rev:.35});}
+    // melody: always present (quiet in the menu and early on), an octave down and harsher for the boss
+    if(Math.floor(st/64)%2===0||M==='hot'||M==='boss'){for(const [p,n,l] of MELODY)if(p===s64){const nn=M==='boss'?n-12+(n%12===10?1:0):n;
+      tone(NOTE(nn),spb*l,'square',M==='menu'?.05:M==='calm'?.045:.055,0,at(),{to:musBus,filt:2600,vib:.006,attack:.02,rev:.45});
+      tone(NOTE(nn+12),spb*l*.6,'sine',.02,0,at(),{to:musBus,attack:.02,rev:.5});}}
+    if(M==='menu'){if(s16===0&&bar===0)tone(NOTE(root-12),spb*64,'sawtooth',.05,0,at(),{to:musBus,filt:400,attack:1.5,hold:spb*40});return;}
+    // bass: driving eighths with an octave jump, plus the same line an octave up for small speakers
+    if(s16%2===0){const pat=[0,0,12,0,0,7,12,0],n=root-12+pat[s16>>1];
+      tone(NOTE(n),spb*1.7,'sawtooth',M==='boss'?.14:.12,0,at(),{to:musBus,filt:M==='boss'?1100:900,q:2.5,dist:M==='boss'?1:0});
+      tone(NOTE(n+12),spb*1.2,'square',.035,0,at(),{to:musBus,filt:1400});tone(NOTE(n-12),spb*1.7,'sine',.12,0,at(),to);}
     // drums
     const hot=M!=='calm';
-    if(s16%2===1||M==='boss')nz(.035,s16%4===2?.09:.05,8000,{type:'highpass',delay:at(0),to:musBus});
-    if(s16===0||s16===8||(hot&&s16===10)||(M==='boss'&&s16===14)){tone(150,.22,'sine',.5,-110,at(0),to);nz(.02,.12,3000,{type:'highpass',delay:at(0),to:musBus});}
-    if(hot&&(s16===4||s16===12)){nz(.16,.22,1800,{delay:at(0),to:musBus,q:.8});tone(190,.08,'triangle',.12,-60,at(0),to);}
-    if(M==='calm'&&(s16===4||s16===12))nz(.05,.06,6000,{type:'highpass',delay:at(0),to:musBus});
-    // melody: on in hot and boss mode, an octave down and harsher for the boss
-    if(M!=='calm'&&Math.floor(st/64)%2===0){for(const [p,n,l] of MELODY)if(p===s64){const nn=M==='boss'?n-12+(n%12===10?1:0):n;tone(NOTE(nn),spb*l,'square',.045,0,at(0),{to:musBus,filt:2200,vib:.006,attack:.02,rev:.45});}}
+    if(s16%2===1||M==='boss')nz(.04,s16%4===2?.14:.09,8000,{type:'highpass',delay:at(),to:musBus});
+    if(s16===0||s16===8||(hot&&s16===10)||(M==='boss'&&s16===14)){tone(150,.24,'sine',.6,-110,at(),to);tone(300,.05,'triangle',.18,-200,at(),to);nz(.02,.16,3000,{type:'highpass',delay:at(),to:musBus});}
+    if(s16===4||s16===12){if(hot){nz(.18,.34,1900,{delay:at(),to:musBus,q:.8});tone(200,.09,'triangle',.18,-70,at(),to);}else nz(.07,.12,5000,{type:'highpass',delay:at(),to:musBus});}
   }};
 setInterval(()=>{if(AC){music.update();applyVolumes();}},300);
+// Audio unlock: browsers start sound only inside a tap or key press, and iPhones also mute web audio when the side
+// switch is on silent unless a media element is playing. So every tap tries to resume the audio, starts the music
+// and keeps a silent looping media element playing; the listeners go away once sound is running.
+let silentEl=null;
+function silentWav(){const n=800,b=new Uint8Array(44+n),v=new DataView(b.buffer),w=(o,s)=>{for(let i=0;i<s.length;i++)b[o+i]=s.charCodeAt(i);};
+  w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,'data');v.setUint32(40,n,true);b.fill(128,44);
+  let s='';for(const x of b)s+=String.fromCharCode(x);return 'data:audio/wav;base64,'+btoa(s);}
+function unlockAudio(){
+  try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch(e){}
+  audioInit();if(!AC)return;if(AC.state!=='running')AC.resume().catch(()=>{});
+  try{const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0);}catch(e){}
+  if(!silentEl){try{silentEl=new Audio(silentWav());silentEl.loop=true;silentEl.setAttribute('playsinline','');silentEl.volume=.01;}catch(e){silentEl=null;}}
+  if(silentEl&&silentEl.paused)silentEl.play().catch(()=>{});
+  music.start();
+  if(AC.state==='running')for(const ev of UNLOCK_EVENTS)removeEventListener(ev,unlockAudio,true);
+}
+const UNLOCK_EVENTS=['pointerdown','pointerup','touchend','click','keydown'];
+for(const ev of UNLOCK_EVENTS)addEventListener(ev,unlockAudio,true);
+// when the tab comes back, wake the audio again (phones suspend it in the background)
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AC&&AC.state!=='running')AC.resume().catch(()=>{});});
+
 
 // ---------- three.js scene ----------
 const glc=$('#gl'),fxc=$('#fx'),ctx=fxc.getContext('2d');
@@ -757,14 +784,16 @@ lockScroll();
 const renderer=new THREE.WebGLRenderer({canvas:glc,antialias:true,powerPreference:'high-performance'});
 // phones: no real-time shadows (soft blob shadows are drawn instead) and a lower pixel ratio; the pixel ratio also
 // drops by itself if frames get slow and climbs back when there is headroom
-const DPR_MAX=Math.min(window.devicePixelRatio||1,TOUCH?1.25:1.75);let dpr=DPR_MAX;
+// graphics quality (settings): low / mid / high = pixel density, real shadows, particle amount, ground sharpness
+if(!['low','mid','high'].includes(save.gfx))save.gfx=TOUCH?'mid':'high';
+let dpr=Math.min(window.devicePixelRatio||1,2);
 renderer.setPixelRatio(dpr);
-renderer.shadowMap.enabled=!TOUCH;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-const FXQ=TOUCH?.55:1;   // share of decorative particles kept on phones
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+let FXQ=1;   // share of decorative particles kept (set by the graphics quality)
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x10121c);scene.fog=new THREE.Fog(0x10121c,42,78);
 const camera=new THREE.PerspectiveCamera(42,1,0.5,220);
 scene.add(new THREE.HemisphereLight(0x8f9fe0,0x2c2536,0.8));
-const moon=new THREE.DirectionalLight(0xc3d4ff,0.85);moon.castShadow=!TOUCH;moon.shadow.mapSize.set(TOUCH?1024:2048,TOUCH?1024:2048);
+const moon=new THREE.DirectionalLight(0xc3d4ff,0.85);moon.castShadow=true;moon.shadow.mapSize.set(TOUCH?1024:2048,TOUCH?1024:2048);
 {const c=moon.shadow.camera;c.left=-42;c.right=42;c.top=42;c.bottom=-42;c.near=1;c.far=110;moon.shadow.bias=-0.0008;}
 scene.add(moon);scene.add(moon.target);
 const lamp=new THREE.PointLight(0xffb45e,1.5,20,1.5);scene.add(lamp);
@@ -774,8 +803,11 @@ const ZOOMS=[[18.5,20.5],[23.5,25.5],[30,32]];
 // A tall phone screen sees little to the sides, so the camera pulls back further the narrower the screen
 // (and the fog moves back with it, so the arena keeps the same look).
 function resize(){W=window.innerWidth;H=window.innerHeight;renderer.setSize(W,H,false);camera.aspect=W/H;const a=W/H;
-  const z=ZOOMS[save.zoom]||ZOOMS[1];camera.fov=a<1?50:a<1.4?45:40;camD=a<1?z[1]:z[0];scene.fog.near=camD*1.4;scene.fog.far=camD*2.7;
-  camera.updateProjectionMatrix();fxc.width=W;fxc.height=H;}
+  // the camera distance is fixed (designer's choice); ZOOMS keeps the other values for tuning
+  const z=ZOOMS[1];camera.fov=a<1?50:a<1.4?45:40;camD=a<1?z[1]:z[0];scene.fog.near=camD*1.4;scene.fog.far=camD*2.7;
+  // the 2D overlay (damage numbers, markers) is drawn at the screen's real pixel density so text stays sharp
+  const cd=Math.min(window.devicePixelRatio||1,2);fxc.width=Math.round(W*cd);fxc.height=Math.round(H*cd);ctx.setTransform(cd,0,0,cd,0,0);
+  camera.updateProjectionMatrix();}
 addEventListener('resize',resize);resize();
 
 // geometry helpers: flat-shaded low-poly parts with per-vertex colour, merged into one mesh
@@ -1068,7 +1100,7 @@ function fxLayer(tex,add,cap,order){
   return L;
 }
 const LG={
-  blob:fxLayer(FXTEX.glow,false,TOUCH?480:1,0),  // soft shadows under hero and enemies on phones (no shadow maps there)
+  blob:fxLayer(FXTEX.glow,false,480,0),  // soft shadows under hero and enemies on phones (no shadow maps there)
   decal:fxLayer(FXTEX.scorch,false,90,1),      // dark scorch marks on the ground
   gglow:fxLayer(FXTEX.glow,true,160,2),        // light pools on the ground: auras, fire puddles, soul glow
   ring:fxLayer(FXTEX.ring,true,160,3),         // shock rings
@@ -1642,7 +1674,7 @@ function hudIcons(){   // the static HUD icons, once the icons exist
 // No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
 // add runs and read them (row-level security on the server), so it is safe to ship in the page.
 const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
-const GAME_VER='1.5';
+const GAME_VER='1.6';
 const boardOn=()=>!!(BOARD.url&&BOARD.key);
 if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
 if(!Array.isArray(save.outbox))save.outbox=[];
@@ -1801,7 +1833,8 @@ function settingsHtml(){
   return `<section class="plate"><h2 class="ptitle">Настройки</h2><div class="srows">
     <div class="srow"><span>Музыка</span>${seg('music',[[true,'Вкл'],[false,'Выкл']])}</div>
     <div class="srow"><span>Звуки</span>${seg('sfx',[[true,'Вкл'],[false,'Выкл']])}</div>
-    <div class="srow"><span>Камера</span>${seg('zoom',[[0,'Близко'],[1,'Средне'],[2,'Далеко']])}</div></div></section>`;
+    <div class="srow"><span>Графика</span>${seg('gfx',[['low','Низкая'],['mid','Средняя'],['high','Высокая']])}</div></div>
+    <p class="rec" style="margin:10px 0 0">Если игра подтормаживает, поставьте графику ниже; если картинка мыльная — выше.</p></section>`;
 }
 function showSettings(keep){G.state='menu';hud.hidden=true;
   showScreen(`<div class="wrap" style="max-width:620px"><div class="mtop"><h1 class="title">НАСТРОЙКИ</h1><div class="mbtns"><button class="gb" data-act="menu">${BACK}Назад</button></div></div>${settingsHtml()}<div class="cta"><button class="gb green huge" data-act="start">В НОЧЬ</button></div></div>`,keep);}
@@ -1885,7 +1918,7 @@ addEventListener('pointercancel',()=>{joy=null;});
 $('#pauseBtn').addEventListener('click',pause);
 $('#muteBtn').addEventListener('click',()=>{save.mute=!save.mute;persist();updMute();applyVolumes();});
 // the first touch or key anywhere wakes the audio (browsers only allow sound after a gesture) and starts the music
-for(const ev of ['pointerdown','keydown'])addEventListener(ev,()=>{audioInit();music.start();},{once:true,capture:true});
+
 scr.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b||b.disabled)return;const a=b.dataset.act;audioInit();if(a!=='card'&&a!=='buy'&&a!=='reroll')sfx('click');
   if(a==='start'){
@@ -1910,7 +1943,7 @@ scr.addEventListener('click',e=>{
   else if(a==='quit')endRun(false);
   else if(a==='revealok')closeReveal();
   else if(a==='settings')showSettings();
-  else if(a==='set'){const k=b.dataset.k,v=k==='zoom'?+b.dataset.v:b.dataset.v==='true';save[k]=v;persist();applyVolumes();updMute();if(k==='zoom')resize();
+  else if(a==='set'){const k=b.dataset.k,v=k==='gfx'?b.dataset.v:b.dataset.v==='true';save[k]=v;persist();applyVolumes();updMute();if(k==='gfx')applyGfx();
     if(k==='music'&&v){audioInit();music.start();}if(G.state==='pause')showScreen(pauseHtml(),1);else showSettings(1);}
 });
 
@@ -2054,7 +2087,7 @@ function sync(dt){
   for(const l of hero.userData.limbs)l.m.rotation.x=P.moving?Math.sin(t*13+l.ph)*l.amp:Math.sin(t*2+l.ph)*.05;
   hero.visible=!(P.inv>0&&G.state==='play'&&Math.floor(t*20)%2===0);
   LG.gglow.flat(P.x,.04,P.z,0,5,5,1,.7,.35,.22);
-  if(TOUCH){LG.blob.flat(P.x,.03,P.z,0,1.9,1.9,0,0,0,.55);for(const e of enemies){if(Math.abs(e.x-P.x)<camD&&Math.abs(e.z-P.z)<camD*1.2)LG.blob.flat(e.x,.03,e.z,0,e.r*2.8,e.r*2.8,0,0,0,.45);}}
+  if(!renderer.shadowMap.enabled){LG.blob.flat(P.x,.03,P.z,0,1.9,1.9,0,0,0,.55);for(const e of enemies){if(Math.abs(e.x-P.x)<camD&&Math.abs(e.z-P.z)<camD*1.2)LG.blob.flat(e.x,.03,e.z,0,e.r*2.8,e.r*2.8,0,0,0,.45);}}
   for(const k in LG)LG[k].end();
   syncProps();
   ground.position.set(P.x,0,P.z);groundTex.offset.set(P.x/TILE,-P.z/TILE);
@@ -2089,20 +2122,27 @@ function draw2d(){
     ctx.globalAlpha=.75;ctx.fillStyle='#5cf2d6';ctx.beginPath();ctx.arc(joy.x+joy.dx,joy.y+joy.dy,24,0,TAU);ctx.fill();ctx.globalAlpha=1;}
 }
 let last=performance.now();
-// dynamic resolution: if frames run slow for a while, render fewer pixels; give them back when there is headroom
-let qAcc=0,qN=0,qGood=0;
-function adaptQuality(raw){if(G.state!=='play'||document.hidden)return;qAcc+=raw;qN++;if(qAcc<1.5)return;const avg=qAcc/qN;qAcc=0;qN=0;
-  if(avg>1/42&&dpr>.7){dpr=Math.max(.7,+(dpr-.15).toFixed(2));renderer.setPixelRatio(dpr);resize();qGood=0;}
-  else if(avg<1/57){if(++qGood>=4&&dpr<DPR_MAX){dpr=Math.min(DPR_MAX,+(dpr+.1).toFixed(2));renderer.setPixelRatio(dpr);resize();qGood=0;}}else qGood=0;}
+// graphics quality: low = 1x pixels, no real shadows, fewer particles; mid = up to 2x pixels (shadows on computers);
+// high = the screen's full pixel density (up to 3x), real shadows everywhere, all particles, sharpest ground
+function applyGfx(){
+  const q=save.gfx,dev=window.devicePixelRatio||1;
+  dpr=Math.min(dev,q==='low'?1:q==='mid'?(TOUCH?2:1.5):(TOUCH?3:2));renderer.setPixelRatio(dpr);
+  const sh=q==='high'||(q==='mid'&&!TOUCH);
+  if(renderer.shadowMap.enabled!==sh){renderer.shadowMap.enabled=sh;moon.castShadow=sh;if(moon.shadow.map){moon.shadow.map.dispose();moon.shadow.map=null;}
+    scene.traverse(o=>{const m=o.material;if(m){if(Array.isArray(m))m.forEach(x=>x.needsUpdate=true);else m.needsUpdate=true;}});}
+  FXQ=q==='low'?.45:q==='mid'?(TOUCH?.7:.85):1;
+  groundTex.anisotropy=Math.min(renderer.capabilities.getMaxAnisotropy(),q==='low'?2:q==='mid'?8:16);groundTex.needsUpdate=true;
+  resize();
+}
 function frame(now){
   requestAnimationFrame(frame);
-  const raw=Math.min(.25,(now-last)/1000),dt=Math.min(.05,raw);last=now;adaptQuality(raw);
+  const dt=Math.min(.05,(now-last)/1000);last=now;
   if(G.state==='play'){if(G.hitstop>0)G.hitstop-=dt;else update(dt);hudFrame();}
   if(G.state==='menu'){G.t+=dt;P.yaw=Math.sin(G.t*.5)*.6;}
   if(G.shake>0)G.shake=Math.max(0,G.shake-dt*2.2);
   updateFx(dt);sync(dt);renderer.render(scene,camera);draw2d();
 }
-setHero(P.hero);makePortraits();makeIcons();hudIcons();updMute();recompute();showMenu();requestAnimationFrame(frame);
+setHero(P.hero);makePortraits();makeIcons();hudIcons();updMute();applyGfx();recompute();showMenu();requestAnimationFrame(frame);
 // small hooks for balancing from the console
 window.NH={G,P,S,WEAPONS,HEROES,save,addXp,give:id=>{const w=addWeapon(id);recompute();hudBuild();return w;},max:()=>{for(const w of P.weapons){if(!w.def.super){w.lvl=MAXL;calcW(w);}}recompute();hudBuild();},skip:s=>{G.t+=s;},step:dt=>{if(G.state==='play'){update(dt);sync();}},start:startRun,spawnEnemy,
   // balance-run hooks: simulate without drawing, drive the hero, answer level-up cards
@@ -2110,6 +2150,10 @@ window.NH={G,P,S,WEAPONS,HEROES,save,addXp,give:id=>{const w=addWeapon(id);recom
   setWeapons:(ids,lvl)=>{for(const w of P.weapons.slice())removeWeapon(w);for(const id of ids){const w=addWeapon(id);w.lvl=lvl||1;calcW(w);}recompute();hudBuild();},
   BOARD,runRecord,flushRuns,showBoard,endRun,
   render:dt=>{updateFx(dt||.016);sync(dt||.016);renderer.render(scene,camera);draw2d();hudFrame();},
+  audioProbe:async(mode,ms)=>{unlockAudio();const an=AC.createAnalyser();an.fftSize=2048;master.connect(an);const sm=musBus;const old=music.mode;const upd=music.update;music.update=()=>{music.mode=mode;};music.mode=mode;music.start();
+    const buf=new Float32Array(an.fftSize);let peak=0,sum=0,n=0;const t0=performance.now();while(performance.now()-t0<(ms||2500)){await new Promise(r=>setTimeout(r,40));an.getFloatTimeDomainData(buf);for(const x of buf){const v=Math.abs(x);if(v>peak)peak=v;sum+=x*x;n++;}}
+    music.update=upd;master.disconnect(an);return {mode,state:AC.state,musGain:+sm.gain.value.toFixed(2),rmsDb:+(10*Math.log10(sum/n+1e-12)).toFixed(1),peak:+peak.toFixed(2)};},
+  cam:()=>({fov:camera.fov,camD,aspect:+camera.aspect.toFixed(3),W,H,pos:camera.position.toArray().map(v=>+v.toFixed(1))}),
   openChest,audioTest:()=>{audioInit();const out={};for(const n of ['shot','nail','blast','slash','whoosh','zap','bell','fire','hit','kill','soul','coin','hurt','dash','level','pick','chest','fuse','bomb','dead','warn','boss','glass','click','card','reroll','set','lamp']){slast[n]=0;try{sfx(n);out[n]=1;}catch(e){out[n]=String(e);}}
     for(const m of ['menu','calm','hot','boss']){music.mode=m;try{for(let st=0;st<64;st++)music.play(st,AC.currentTime+st*.005);out[m]=1;}catch(e){out[m]=String(e);}}return {state:AC&&AC.state,out};},  lamps:()=>LAMPS,souls:()=>souls,coins:()=>coins,chests:()=>chests,pickups:()=>pickups,eprojs:()=>eprojs,fusionsReady,partnerOf,RECIPE,PASSIVES,META,metaCost,recompute,dropPickup,enemies:()=>enemies};
 })();
