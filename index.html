@@ -181,6 +181,43 @@ kbd{font:500 11px var(--body);padding:1px 6px;border-radius:4px;border:1px solid
 }
 @media (prefers-reduced-motion:reduce){.toast,.card.fuse{animation-duration:.01s}}
 
+/* Leaderboard */
+.bstat{margin:0;color:var(--ink);font-size:14px;line-height:1.5}
+.bstat b{color:var(--gold)}
+.nickf{display:flex;flex-direction:column;gap:8px}
+.nickrow{display:flex;gap:8px;flex-wrap:wrap}
+#nick{font:500 16px var(--body);padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);min-width:0;flex:1 1 180px;max-width:280px;user-select:text;-webkit-user-select:text}
+#nick:focus{outline:2px solid var(--soul);outline-offset:1px}
+.bnick{color:var(--dim);font-size:14px}
+.bnick b{color:var(--ink)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{font:500 14px var(--body);padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--panel2);color:var(--dim);cursor:pointer}
+.tab.on{background:var(--soul);border-color:var(--soul);color:#08221d}
+.blist{display:flex;flex-direction:column;gap:6px}
+.brow{border:1px solid var(--line);border-radius:10px;background:rgba(26,29,46,.92)}
+.brow.me{border-color:var(--soul);box-shadow:0 0 0 1px var(--soul) inset}
+.brow summary{list-style:none;display:grid;grid-template-columns:30px minmax(0,1fr) auto;grid-template-areas:"pl nm t" "pl bd bd";gap:4px 10px;align-items:center;padding:9px 12px;cursor:pointer}
+.brow summary::-webkit-details-marker{display:none}
+.bpl{grid-area:pl;font:18px var(--display);color:var(--dim);text-align:center}
+.brow:nth-child(1) .bpl{color:var(--gold)}.brow:nth-child(2) .bpl{color:#d7dbe8}.brow:nth-child(3) .bpl{color:#e09a5f}
+.bnm{grid-area:nm;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bnm b{font-size:15px}.bnm em{font-style:normal;font-size:11px;color:var(--soul);margin-left:4px}
+.bsub{display:block;font-size:12px;color:var(--dim)}
+.bt{grid-area:t;font:20px var(--display);font-variant-numeric:tabular-nums}
+.bbuild{grid-area:bd;display:flex;gap:4px;flex-wrap:wrap}
+.bw{position:relative;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:7px;background:var(--panel2);font-size:16px}
+.bw i{position:absolute;right:-4px;bottom:-5px;font:9px var(--display);font-style:normal;background:var(--line);color:var(--ink);border-radius:4px;padding:0 3px}
+.bw.sup{box-shadow:0 0 0 1px var(--gold) inset}.bw.sup i{background:var(--gold);color:#10121c}
+.bdet{padding:0 12px 12px;display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:10px}
+.bdet h3{margin:4px 0 0;font:13px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.bmeta{font-size:12px;color:var(--dim);line-height:1.45}
+.bsets,.bpas{display:flex;gap:5px;flex-wrap:wrap}
+.wrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(58,64,100,.5)}
+.wrow:last-child{border-bottom:0}
+.wrow .wi{font-size:22px}
+.wrow .bt{grid-area:auto;font-size:18px}
+.wrow .bsets+.bsub{margin-top:4px}
+
 /* Phones and tablets: notch-safe HUD, an on-screen dash button, touch hints instead of keys */
 body{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 button{touch-action:manipulation}
@@ -503,7 +540,8 @@ const LOCK_OFF=60;let locked=false;
 function lockScroll(){
   if(locked||!TOUCH_ON())return;locked=true;
   const de=document.documentElement;de.classList.add('lock');if(IN_TG)de.classList.add('lockx');
-  const fix=()=>{const x=IN_TG?LOCK_OFF:0;if(Math.abs(scrollY-LOCK_OFF)>.5||Math.abs(scrollX-x)>.5)scrollTo(x,LOCK_OFF);};
+  const fix=()=>{const a=document.activeElement;if(a&&a.tagName==='INPUT')return;   // let the phone keyboard move the page while typing a name
+    const x=IN_TG?LOCK_OFF:0;if(Math.abs(scrollY-LOCK_OFF)>.5||Math.abs(scrollX-x)>.5)scrollTo(x,LOCK_OFF);};
   fix();requestAnimationFrame(fix);setTimeout(fix,300);
   addEventListener('scroll',fix,{passive:true});addEventListener('resize',()=>setTimeout(fix,50));
   addEventListener('touchstart',fix,{passive:true});
@@ -1177,6 +1215,107 @@ function hudFrame(){
   if(hudC.buffs!==b){hudC.buffs=b;$('#buffs').innerHTML=b;}
 }
 
+// ---------- shared leaderboard (Supabase) ----------
+// Nobody logs in: each browser gets a random player id, and the player types a name once.
+// No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
+// add runs and read them (row-level security on the server), so it is safe to ship in the page.
+const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
+const GAME_VER='1.3';
+const boardOn=()=>!!(BOARD.url&&BOARD.key);
+if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
+if(!Array.isArray(save.outbox))save.outbox=[];
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cleanNick=s=>String(s||'').replace(/[\u0000-\u001f<>]/g,'').trim().slice(0,20);
+function bHead(extra){const h={apikey:BOARD.key,'Content-Type':'application/json'};if(!BOARD.key.startsWith('sb_'))h.Authorization='Bearer '+BOARD.key;return Object.assign(h,extra||{});}
+async function bGet(q){const r=await fetch(BOARD.url+'/rest/v1/'+q,{headers:bHead(),cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+async function bPost(row){const r=await fetch(BOARD.url+'/rest/v1/runs',{method:'POST',headers:bHead({Prefer:'return=minimal'}),body:JSON.stringify(row)});if(!r.ok)throw new Error('HTTP '+r.status+' '+(await r.text()).slice(0,200));}
+// what one finished run looks like in the table
+function runRecord(){
+  const sets={},c=tagCounts();for(const t in c)if(c[t]>=2)sets[t]=Math.min(4,c[t]);
+  const dmg={};for(const id in G.log)if(WEAPONS[id])dmg[id]=Math.round(G.log[id]);
+  return {pid:save.pid,nick:save.nick||'',hero:P.hero,start:G.startWeapon||null,secs:Math.floor(G.t),kills:G.kills,lvl:P.lvl,
+    coins:Math.floor(G.coins)+Math.floor(G.t/15),meta:Object.values(save.meta).reduce((a,b)=>a+(b|0),0),died:!!G.died,
+    weapons:P.weapons.map(w=>({id:w.id,l:w.lvl,d:Math.round(G.log[w.id]||0)})),dmg,passives:Object.assign({},P.pas),sets,ver:GAME_VER};
+}
+let flushing=false;
+async function flushRuns(){
+  if(!boardOn()||flushing||!save.outbox.length||!save.nick)return 'idle';
+  flushing=true;let ok=0;
+  try{while(save.outbox.length){const row=Object.assign({},save.outbox[0],{nick:save.nick});await bPost(row);save.outbox.shift();ok++;persist();}}
+  catch(e){console.warn('рейтинг:',e.message);}
+  flushing=false;return ok?'sent':'fail';
+}
+async function myRank(){
+  const rows=await bGet('best_runs?select=pid&order=secs.desc,kills.desc&limit=1000');
+  const i=rows.findIndex(r=>r.pid===save.pid);return {place:i<0?null:i+1,total:rows.length};
+}
+// the line on the death screen under the stats
+async function boardStatus(){
+  const el=$('#bstat');if(!el)return;
+  if(!boardOn()){el.textContent='Общий рейтинг ещё не подключён.';return;}
+  if(!save.nick){el.innerHTML=nickForm('Впишите имя, и этот забег попадёт в общий рейтинг.');return;}
+  el.textContent='Отправляю забег в рейтинг…';
+  const st=await flushRuns();
+  if(st==='fail'){el.textContent='Не удалось отправить забег: нет связи. Он уйдёт в рейтинг после следующего забега.';return;}
+  try{const r=await myRank();el.innerHTML=r.place?`Ваш лучший забег — <b>${r.place}-е место</b> из ${r.total} в общем рейтинге. <button class="link" data-act="board">Открыть рейтинг</button>`:'Забег в рейтинге. <button class="link" data-act="board">Открыть рейтинг</button>';}
+  catch(e){el.innerHTML='Забег отправлен. <button class="link" data-act="board">Открыть рейтинг</button>';}
+}
+const nickForm=txt=>`<span class="nickf"><span>${txt}</span><span class="nickrow"><input id="nick" maxlength="20" placeholder="Ник, не настоящее имя" value="${esc(save.nick||'')}" autocomplete="nickname" enterkeyhint="done"><button class="btn" data-act="nick">Сохранить</button></span><span class="bsub">Имя видно всем, у кого есть ссылка на игру.</span></span>`;
+function saveNick(){
+  const v=cleanNick($('#nick')&&$('#nick').value);if(!v){$('#nick')&&$('#nick').focus();return;}
+  save.nick=v;persist();if($('#bstat'))boardStatus();else showBoard(boardTab);
+}
+// board screen: best run of every player, recent runs, weapons and set combos
+let boardTab='top';
+const heroName=id=>HEROES[id]?HEROES[id].name:'?';
+const wIcon=w=>{const d=WEAPONS[w&&w.id];return d?`<span class="bw ${d.super?'sup':''}" title="${esc(d.name)}">${d.icon}<i>${d.super?'★'+(w.l|0):(w.l|0)}</i></span>`:'';};
+const setChips=s=>Object.keys(s||{}).filter(t=>TAGS[t]).map(t=>`<span class="chip" style="--tc:${TAGS[t].color}">${esc(TAGS[t].name)} ${s[t]|0}</span>`).join('');
+const when=s=>{const d=new Date(s);return isNaN(d)?'':d.toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});};
+function runDetails(r){
+  const log=Object.entries(r.dmg||{}).filter(([id])=>WEAPONS[id]).sort((a,b)=>b[1]-a[1]);const mx=log.length?log[0][1]||1:1,sum=log.reduce((a,b)=>a+b[1],0)||1;
+  const bars=log.map(([id,v])=>`<div class="bar"><i style="width:${(v/mx*100).toFixed(1)}%"></i><span>${WEAPONS[id].icon} ${esc(WEAPONS[id].name)}</span><em>${fmtNum(+v||0)} · ${Math.round(v/sum*100)}%</em></div>`).join('');
+  const pas=Object.entries(r.passives||{}).filter(([id])=>PASSIVES[id]).map(([id,n])=>`<span class="pas" title="${esc(PASSIVES[id].name)}">${PASSIVES[id].icon}<b>${n|0}</b></span>`).join('');
+  return `<div class="bdet"><div class="bmeta">${esc(heroName(r.hero))} · старт: ${r.start&&WEAPONS[r.start]?WEAPONS[r.start].icon+' '+esc(WEAPONS[r.start].name):'—'} · монет: ${r.coins|0} · прокачка сторожки: ${r.meta|0} · ${esc(when(r.created_at))}</div>
+    ${setChips(r.sets)?`<div class="bsets">${setChips(r.sets)}</div>`:''}${pas?`<div class="bpas">${pas}</div>`:''}<h3>Урон за забег</h3>${bars||'<p class="rec">Нет данных.</p>'}</div>`;
+}
+function runRow(r,place){
+  const me=r.pid===save.pid;
+  return `<details class="brow ${me?'me':''}"><summary><span class="bpl">${place||''}</span><span class="bnm"><b>${esc(r.nick)}</b>${me?' <em>это вы</em>':''}<span class="bsub">${esc(heroName(r.hero))} · ур. ${r.lvl|0} · 💀 ${fmtNum(r.kills|0)}</span></span><span class="bt">${fmtTime(r.secs|0)}</span><span class="bbuild">${(Array.isArray(r.weapons)?r.weapons:[]).map(wIcon).join('')}</span></summary>${runDetails(r)}</details>`;
+}
+function weaponStats(rows){
+  const ws={},combos={};
+  for(const r of rows){const ids=new Set();const tot=Object.values(r.dmg||{}).reduce((a,b)=>a+(+b||0),0)||1;
+    for(const w of (Array.isArray(r.weapons)?r.weapons:[])){if(!WEAPONS[w.id]||ids.has(w.id))continue;ids.add(w.id);
+      const s=ws[w.id]||(ws[w.id]={n:0,t:0,share:0,best:0});s.n++;s.t+=r.secs|0;s.share+=((r.dmg||{})[w.id]||0)/tot;s.best=Math.max(s.best,r.secs|0);}
+    const key=Object.keys(r.sets||{}).filter(t=>TAGS[t]).sort().map(t=>t+':'+(r.sets[t]|0)).join('|');
+    if(key){const c=combos[key]||(combos[key]={n:0,t:0,best:0,sets:r.sets});c.n++;c.t+=r.secs|0;c.best=Math.max(c.best,r.secs|0);}}
+  const wl=Object.entries(ws).filter(([,s])=>s.n>=2).sort((a,b)=>b[1].t/b[1].n-a[1].t/a[1].n);
+  const cl=Object.values(combos).filter(c=>c.n>=2).sort((a,b)=>b.t/b.n-a.t/a.n).slice(0,12);
+  const wHtml=wl.map(([id,s])=>{const d=WEAPONS[id];return `<div class="wrow"><span class="wi">${d.icon}</span><span class="wn"><b>${esc(d.name)}</b>${d.super?' <span class="chip" style="--tc:var(--gold)">супер</span>':''}<span class="bsub">в ${s.n} забегах · рекорд ${fmtTime(s.best)} · ${Math.round(s.share/s.n*100)}% урона</span></span><span class="bt">${fmtTime(s.t/s.n)}</span></div>`;}).join('');
+  const cHtml=cl.map(c=>`<div class="wrow"><span class="wn"><span class="bsets">${setChips(c.sets)}</span><span class="bsub">в ${c.n} забегах · рекорд ${fmtTime(c.best)}</span></span><span class="bt">${fmtTime(c.t/c.n)}</span></div>`).join('');
+  return `<p class="rec">По последним ${rows.length} забегам всех игроков. Справа среднее время жизни в забегах, где это было в финальной сборке.</p>
+  <section class="panel"><h2>Связки сетов</h2>${cHtml||'<p class="rec">Пока мало забегов с собранными сетами.</p>'}</section>
+  <section class="panel"><h2>Оружие</h2>${wHtml||'<p class="rec">Пока мало забегов.</p>'}</section>`;
+}
+async function showBoard(tab){
+  boardTab=tab||boardTab;G.state='board';hud.hidden=true;scr.hidden=false;
+  const tabs=[['top','Лучшие игроки'],['recent','Последние забеги'],['weapons','Оружие и связки']].map(([id,n])=>`<button class="tab ${boardTab===id?'on':''}" data-act="btab" data-id="${id}">${n}</button>`).join('');
+  scr.innerHTML=`<div class="wrap"><header><h1>Рейтинг</h1><p class="sub">Общий для всех, у кого есть ссылка на игру. В топе лучший забег каждого игрока; нажмите на строку, чтобы увидеть сборку и урон.</p></header>
+    <div class="bnick">${save.nick?`Вы играете как <b>${esc(save.nick)}</b>. <button class="link" data-act="nickedit">Сменить имя</button>`:nickForm('Впишите имя, чтобы ваши забеги попадали в рейтинг.')}</div>
+    <div class="tabs">${tabs}</div><div id="blist" class="blist"><p class="rec">Загружаю…</p></div>
+    <div class="row"><button class="big" data-act="start">Начать ночь</button><button class="btn" data-act="menu">Сторожка</button></div></div>`;
+  const out=$('#blist');
+  if(!boardOn()){out.innerHTML='<p class="rec">Общий рейтинг ещё не подключён.</p>';return;}
+  flushRuns();
+  try{
+    if(boardTab==='top'){const rows=await bGet('best_runs?select=*&order=secs.desc,kills.desc&limit=100');
+      out.innerHTML=rows.length?rows.map((r,i)=>runRow(r,i+1)).join(''):'<p class="rec">Пока никто не сыграл. Будьте первым.</p>';}
+    else if(boardTab==='recent'){const rows=await bGet('runs?select=*&order=created_at.desc&limit=40');
+      out.innerHTML=rows.length?rows.map(r=>runRow(r,'')).join(''):'<p class="rec">Пока никто не сыграл.</p>';}
+    else{const rows=await bGet('runs?select=secs,weapons,dmg,sets&order=created_at.desc&limit=1000');out.innerHTML=weaponStats(rows);}
+  }catch(e){if(G.state==='board')out.innerHTML='<p class="rec">Рейтинг сейчас недоступен: нет связи с сервером. Попробуйте позже.</p>';}
+}
+
 // ---------- screens ----------
 const recipeList=()=>Object.values(WEAPONS).filter(d=>d.super).map(d=>{
   const a=P.weapons.find(w=>w.id===d.from[0]),b=P.weapons.find(w=>w.id===d.from[1]),own=P.weapons.some(w=>w.id===d.id);
@@ -1199,7 +1338,7 @@ function showMenu(){
       <div class="wdesc"><b>${sw.icon} ${sw.name}</b> · сет «${TAGS[sw.tag].name}». ${sw.desc}<br>Слияние: + ${WEAPONS[sp].name} → ${WEAPONS[RECIPE[sw.id]].icon} ${WEAPONS[RECIPE[sw.id]].name}.</div></section>
     <section><h2>Сторожка <span class="coins">🪙 ${save.coins}</span></h2><div class="meta">${mr}</div></section>
   </div>
-  <div class="cta"><button class="big" data-act="start">Начать ночь</button>
+  <div class="cta"><button class="big" data-act="start">Начать ночь</button><button class="btn" data-act="board">🏆 Рейтинг</button>
     <div class="rec">${save.runs?`Рекорд: ${fmtTime(save.best.time)} · ${save.best.kills} убийств · уровень ${save.best.lvl}<br>Забегов: ${save.runs}`:'Улучшения в сторожке остаются навсегда. Монеты падают с врагов и из сундуков.'}</div></div>
   <p class="keys"><span class="kb"><kbd>WASD</kbd> или стрелки: бег · <kbd>Пробел</kbd>: рывок сквозь врагов · <kbd>Esc</kbd>: пауза и книга слияний · <kbd>1</kbd> <kbd>2</kbd>: карта · <kbd>R</kbd>: реролл · <kbd>M</kbd>: звук.</span><span class="tc">Положите палец на экран и ведите его в сторону: герой бежит туда. Кнопка «Рывок» справа проносит сквозь врагов. Кнопка ⏸ вверху: пауза и книга слияний.</span></p>
   </div>`;
@@ -1214,7 +1353,10 @@ function pause(){if(G.state!=='play')return;G.state='pause';scr.hidden=false;
   scr.innerHTML=`<div class="wrap"><div class="lvhead"><h1>Пауза</h1></div>${buildHtml()}<div class="row"><button class="big" data-act="resume">Продолжить</button><button class="btn" data-act="quit">Закончить забег</button></div></div>`;}
 function resume(){if(G.state!=='pause')return;scr.hidden=true;G.state='play';}
 function endRun(died){
-  checkUnlocks();G.state='dead';if(died){sfx('dead');screenFlash(.5);}
+  checkUnlocks();G.state='dead';G.died=!!died;if(died){sfx('dead');screenFlash(.5);}
+  // runs of 20 s and more go to the shared leaderboard (test and balance runs set NH.noSave and are skipped)
+  const toBoard=G.t>=20&&!(window.NH&&window.NH.noSave);
+  if(toBoard){save.outbox.push(runRecord());if(save.outbox.length>20)save.outbox.splice(0,save.outbox.length-20);}
   const earned=Math.floor(G.coins)+Math.floor(G.t/15);save.coins+=earned;save.runs++;
   const rec=G.t>save.best.time;save.best.time=Math.max(save.best.time,G.t);save.best.kills=Math.max(save.best.kills,G.kills);save.best.lvl=Math.max(save.best.lvl,P.lvl);persist();
   const log=Object.entries(G.log).sort((a,b)=>b[1]-a[1]),mx=log.length?log[0][1]:1;
@@ -1224,8 +1366,10 @@ function endRun(died){
   hud.hidden=true;scr.hidden=false;
   scr.innerHTML=`<div class="wrap"><div><h1>${died?'Ночь победила':'Забег окончен'}</h1><p class="sub">${HEROES[P.hero].name}. ${rec?'Новый рекорд по времени. ':''}${G.newHeroes.length?'Открыт герой: '+G.newHeroes.map(id=>HEROES[id].name).join(', ')+'. ':''}Монеты уже в сторожке: потратьте их на постоянные улучшения и возвращайтесь сильнее.</p></div>
   <div class="stats"><div class="stat"><b>${fmtTime(G.t)}</b><span>прожито</span></div><div class="stat"><b>${G.kills}</b><span>убито</span></div><div class="stat"><b>${P.lvl}</b><span>уровень</span></div><div class="stat"><b style="color:var(--gold)">+${earned}</b><span>монет</span></div></div>
+  <p id="bstat" class="bstat">${toBoard?'':'Забеги короче 20 секунд в рейтинг не попадают.'}</p>
   ${hurtLine}<div class="grid2"><section><h2>Кто сколько нанёс</h2>${bars||'<p class="rec">Урона не было.</p>'}</section><section><h2>Книга слияний</h2>${recipeList()}</section></div>
-  <div class="row"><button class="big" data-act="start">Ещё раз</button><button class="btn" data-act="menu">Сторожка и выбор оружия</button></div></div>`;
+  <div class="row"><button class="big" data-act="start">Ещё раз</button><button class="btn" data-act="board">🏆 Рейтинг</button><button class="btn" data-act="menu">Сторожка и выбор оружия</button></div></div>`;
+  if(toBoard)boardStatus();
 }
 function clearWorld(){
   for(const w of P.weapons.slice())removeWeapon(w);
@@ -1237,7 +1381,7 @@ function clearWorld(){
 }
 function startRun(){
   audioInit();clearWorld();
-  Object.assign(G,{state:'play',t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
+  Object.assign(G,{state:'play',startWeapon:save.startWeapon,died:false,t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
   P.hero=save.unlocked[save.hero]?save.hero:'digger';setHero(P.hero);
   Object.assign(P,{x:0,z:0,lvl:1,xp:0,need:needFor(1),pas:{},yaw:0,dashT:0,dashCd:0,dvx:0,dvz:1,inv:1,revives:save.meta.revive||0,leechN:0});
   addWeapon(WEAPONS[save.startWeapon]&&!WEAPONS[save.startWeapon].super?save.startWeapon:'cleaver');recompute();P.hp=S.maxHp;
@@ -1250,6 +1394,7 @@ function dash(){if(P.dashCd>0||G.state!=='play')return;P.dashT=.17;P.dashCd=2.2;
 // ---------- input ----------
 const keys={};let joy=null;const JOYR=60;
 addEventListener('keydown',e=>{
+  if(e.target&&e.target.tagName==='INPUT'){if(e.code==='Enter'||e.code==='NumpadEnter'){e.preventDefault();saveNick();}return;}
   if(e.repeat){if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();return;}
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
@@ -1290,6 +1435,10 @@ scr.addEventListener('click',e=>{
   else if(a==='reroll')reroll();
   else if(a==='skip')skipCard();
   else if(a==='resume')resume();
+  else if(a==='board')showBoard();
+  else if(a==='btab')showBoard(b.dataset.id);
+  else if(a==='nick')saveNick();
+  else if(a==='nickedit'){const el=$('.bnick');if(el){el.innerHTML=nickForm('Новое имя попадёт и в ваши прошлые забеги после следующей отправки.');$('#nick').focus();}}
   else if(a==='quit')endRun(false);
 });
 
@@ -1418,6 +1567,7 @@ window.NH={G,P,S,WEAPONS,HEROES,save,addXp,give:id=>{const w=addWeapon(id);recom
   // balance-run hooks: simulate without drawing, drive the hero, answer level-up cards
   tick:dt=>{if(G.state==='play')update(dt);},pick:i=>{G.lock=0;pickCard(i);},skipCard:()=>{G.lock=0;skipCard();},rerollCards:()=>{G.lock=0;reroll();},dash,
   setWeapons:(ids,lvl)=>{for(const w of P.weapons.slice())removeWeapon(w);for(const id of ids){const w=addWeapon(id);w.lvl=lvl||1;calcW(w);}recompute();hudBuild();},
+  BOARD,runRecord,flushRuns,showBoard,endRun,
   souls:()=>souls,coins:()=>coins,chests:()=>chests,pickups:()=>pickups,eprojs:()=>eprojs,fusionsReady,partnerOf,RECIPE,PASSIVES,META,metaCost,recompute,dropPickup,enemies:()=>enemies};
 })();
 </script>
