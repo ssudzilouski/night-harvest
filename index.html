@@ -129,6 +129,8 @@ kbd{display:inline-block;min-width:20px;font:800 12px/1 var(--body);padding:4px 
 .slot.empty{border-style:dashed;border-color:rgba(12,9,17,.9);background:rgba(20,15,27,.45);box-shadow:none}
 .slot .cd{position:absolute;inset:0;border-radius:10px;background:conic-gradient(rgba(10,6,16,.55) calc(var(--c,0)*360deg),transparent 0)}
 .slot.flashy{animation:slotpop .45s}
+.slot.ready{animation:slotready .7s ease-in-out infinite alternate}
+@keyframes slotready{from{box-shadow:inset 0 0 0 2px var(--gold),0 4px 0 var(--edge),0 0 6px rgba(255,200,61,.4)}to{box-shadow:inset 0 0 0 3px #fff3b0,0 4px 0 var(--edge),0 0 22px rgba(255,200,61,.95)}}
 @keyframes slotpop{40%{transform:scale(1.2) rotate(-4deg)}}
 .pslot{position:relative;width:34px;height:34px;border-radius:9px;border:2.5px solid var(--edge);display:grid;place-items:center;background:radial-gradient(circle at 50% 30%,#3e3150,#18121f 75%);box-shadow:0 3px 0 var(--edge)}
 .pslot .ico{width:30px;height:30px}
@@ -1566,7 +1568,7 @@ function openChest(){
   sfx('chest');G.coins+=Math.round(rnd(5,10))*S.coin;burst(P.x,1.2,P.z,24,0xffd76a,8,.2);pillarFx(P.x,P.z,0xffc83d);for(let i=0;i<8;i++)dropCoin(P.x+rnd(-1,1),P.z+rnd(-1,1),0);
   const fz=fusionsReady();if(fz.length){doFuse(fz[0]);reveal('w:'+fz[0],WEAPONS[fz[0]].name,'Слияние в супероружие! '+WEAPONS[fz[0]].desc,'legend');return;}
   const ups=P.weapons.filter(w=>w.def.super||w.lvl<MAXL);
-  if(ups.length){const pr=ups.filter(w=>!w.def.super&&P.weapons.some(o=>o.id===partnerOf(w.id)));const w=pick(pr.length?pr:ups);w.lvl++;calcW(w);recompute();hudBuild(w.id);
+  if(ups.length){const pr=ups.filter(w=>!w.def.super&&P.weapons.some(o=>o.id===partnerOf(w.id)));const w=pick(pr.length?pr:ups);w.lvl++;calcW(w);recompute();hudBuild(w.id);checkFuseReady();
     reveal('w:'+w.id,w.def.name,w.def.super?`Супероружие ★${w.lvl}: +18% урона`:`Уровень ${w.lvl}: ${w.def.ups[w.lvl-2][0]}`,w.def.super?'legend':'',w.def.super?null:TAGS[w.def.tags[0]].color);}
   else{P.pas.dmg=(P.pas.dmg||0)+20;recompute();hudBuild();reveal('i:dmg','Точильный камень','+20% урона ко всему оружию','epic');}
 }
@@ -1606,7 +1608,7 @@ function cardHtml(c,i){
   const key=`<kbd class="key">${i+1}</kbd>`;
   const tags=d=>`<div class="tags">${[...new Set(d.tags)].map(t=>`<span class="chip" style="--tc:${TAGS[t].color}">${TAGS[t].name}</span>`).join('')}</div>`;
   const hint=id=>{const s=RECIPE[id];if(!s)return'';const pid=partnerOf(id),has=P.weapons.some(w=>w.id===pid);
-    return `<div class="foot ${has?'hot':''}">${recipeHtml(WEAPONS[s])}<span>${has?'Вторая половина уже у вас. ':''}Нужен ${MAXL} уровень у обоих.</span></div>`;};
+    return `<div class="foot ${has?'hot':''}">${recipeHtml(WEAPONS[s])}<span>${has?'Вторая половина уже у вас. ':''}Когда оба будут ${MAXL} уровня, на следующем уровне выпадет карта слияния.</span></div>`;};
   if(c.kind==='fuse'){const d=WEAPONS[c.id];
     return `<button class="card fuse legend" data-act="card" data-i="${i}">${key}<span class="rib">Слияние</span><div class="medal">${icoW(c.id)}</div><div class="nm">${d.name}</div><div class="tx">${hiNum(d.desc)}</div><div class="foot hot">${recipeHtml(d)}<span>Два оружия сливаются в одно и освобождают ячейку.</span></div></button>`;}
   if(c.kind==='new'){const d=WEAPONS[c.id];
@@ -1622,7 +1624,11 @@ function renderLevelUp(){
   <div class="lvfoot"><button class="gb purple" data-act="reroll" ${G.rerolls>0?'':'disabled'}>${icoI('dice')}Перебросить <kbd>R</kbd><span class="badge">${G.rerolls}</span></button><button class="gb" data-act="skip">${icoI('hp')}Пропустить: +15% здоровья</button></div></div>`);
 }
 function openLevelUp(){G.state='levelup';G.rerolls=S.rerolls;G.cards=rollCards();G.lock=performance.now()+350;sfx('level');renderLevelUp();}
-function closeCard(){G.pendingLv--;recompute();hudBuild();if(G.pendingLv>0)openLevelUp();else{scr.hidden=true;G.state='play';}}
+// when two weapons of a recipe both reach level 5, say so right away: the fusion card comes with the next level
+// (or a chest fuses them at once), and their slots glow gold until then
+function checkFuseReady(){if(!G.fuseSaid)G.fuseSaid={};for(const id of fusionsReady()){if(G.fuseSaid[id])continue;G.fuseSaid[id]=1;
+  setTimeout(()=>{toast(`Слияние готово: ${WEAPONS[id].name}! Карта будет на следующем уровне`,'big','w:'+id);sfx('set');},600);}}
+function closeCard(){G.pendingLv--;recompute();hudBuild();checkFuseReady();if(G.pendingLv>0)openLevelUp();else{scr.hidden=true;G.state='play';}}
 function pickCard(i){
   if(performance.now()<G.lock)return;const c=G.cards[i];if(!c)return;sfx('card');
   if(c.kind==='fuse')doFuse(c.id);
@@ -1640,8 +1646,9 @@ function setTxt(id,v){if(hudC[id]!==v){hudC[id]=v;$(id).textContent=v;}}
 const pips=(n,max,nw)=>{let h='';for(let i=0;i<max;i++)h+=`<i class="${i<n?(nw&&i===n-1?'nw':'on'):''}"></i>`;return `<span class="pips">${h}</span>`;};
 let slotCd=[],xpFill=null,hpFill=null,hpLag=null;
 function hudBuild(flashId){
+  const fzr=fusionsReady();
   let h='';for(let i=0;i<Math.max(S.slots,P.weapons.length);i++){const w=P.weapons[i];
-    if(w)h+=`<div class="slot ${w.def.super?'super':''} ${flashId===w.id?'flashy':''}" style="--tc:${TAGS[w.def.tags[0]].color}" title="${w.def.name}">${icoW(w.id)}<span class="cd"></span>${w.def.super?`<span class="sl">★${w.lvl}</span>`:pips(w.lvl,MAXL)}</div>`;
+    if(w)h+=`<div class="slot ${w.def.super?'super':''} ${flashId===w.id?'flashy':''} ${!w.def.super&&fzr.some(id=>WEAPONS[id].from.includes(w.id))?'ready':''}" style="--tc:${TAGS[w.def.tags[0]].color}" title="${w.def.name}">${icoW(w.id)}<span class="cd"></span>${w.def.super?`<span class="sl">★${w.lvl}</span>`:pips(w.lvl,MAXL)}</div>`;
     else h+='<div class="slot empty"></div>';}
   $('#slots').innerHTML=h;slotCd=[...$('#slots').querySelectorAll('.slot .cd')];
   const c=tagCounts();let s='';for(const t in TAGS){const n=c[t]||0;if(!n)continue;const act=SETS[t].filter(x=>n>=x[0]).map(x=>x[1]).join('; ');
@@ -1681,7 +1688,7 @@ function hudIcons(){   // the static HUD icons, once the icons exist
 // No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
 // add runs and read them (row-level security on the server), so it is safe to ship in the page.
 const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
-const GAME_VER='1.7';
+const GAME_VER='1.8';
 const boardOn=()=>!!(BOARD.url&&BOARD.key);
 if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
 if(!Array.isArray(save.outbox))save.outbox=[];
@@ -1786,7 +1793,7 @@ const hiNum=t=>String(t).replace(/([+−-]?\d+(?:[.,]\d+)?\s?%?)/g,'<b>$1</b>');
 const recipeHtml=d=>`<span class="recipe">${icoW(d.from[0])}<span class="op">+</span>${icoW(d.from[1])}<span class="op">=</span>${icoW(d.id)}<b>${d.name}</b></span>`;
 const recipeList=()=>Object.values(WEAPONS).filter(d=>d.super).map(d=>{
   const a=P.weapons.find(w=>w.id===d.from[0]),b=P.weapons.find(w=>w.id===d.from[1]),own=P.weapons.some(w=>w.id===d.id);
-  return `<div class="li ${own?'ok':''}">${icoW(d.id)}<span class="a"><b>${d.name}</b><br><span class="d">${WEAPONS[d.from[0]].name}${a?' ('+a.lvl+')':''} + ${WEAPONS[d.from[1]].name}${b?' ('+b.lvl+')':''}. ${d.desc}</span></span></div>`;}).join('');
+  return `<div class="li ${own?'ok':''}">${icoW(d.id)}<span class="a"><b>${d.name}</b><br><span class="d">${WEAPONS[d.from[0]].name}${a?' ('+a.lvl+')':''} + ${WEAPONS[d.from[1]].name}${b?' ('+b.lvl+')':''}. ${d.desc}</span>${!own&&a&&b&&a.lvl>=MAXL&&b.lvl>=MAXL?'<br><b style="color:var(--gold)">Готово! Карта слияния выпадет на следующем уровне.</b>':''}</span></div>`;}).join('');
 
 // ---------- main menu: hero, start weapon, play; the shop and the board are their own screens ----------
 function showMenu(keep){
@@ -1885,7 +1892,7 @@ function clearWorld(){
 }
 function startRun(){
   audioInit();music.start();clearWorld();
-  Object.assign(G,{state:'play',startWeapon:save.startWeapon,died:false,t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
+  Object.assign(G,{state:'play',startWeapon:save.startWeapon,died:false,fuseSaid:{},t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
   P.hero=save.unlocked[save.hero]?save.hero:'digger';setHero(P.hero);
   Object.assign(P,{x:0,z:0,lvl:1,xp:0,need:needFor(1),pas:{},yaw:0,dashT:0,dashCd:0,dvx:0,dvz:1,inv:1,revives:save.meta.revive||0,leechN:0});
   addWeapon(WEAPONS[save.startWeapon]&&!WEAPONS[save.startWeapon].super?save.startWeapon:'cleaver');recompute();P.hp=S.maxHp;
