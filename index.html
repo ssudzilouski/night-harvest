@@ -420,6 +420,29 @@ body.touch .card:hover{transform:none}
   #bottom{padding-bottom:calc(8px + env(safe-area-inset-bottom,0px))}
   #slots{gap:5px;padding:4px 6px;border-radius:13px}
 }
+/* a phone on its side (short and wide): one top row (level, health, kills-timer-gold in the middle, buttons) and small weapon slots */
+@media (orientation:landscape) and (max-height:500px){
+  #xpbar{height:8px}
+  #topbar{top:calc(13px + env(safe-area-inset-top,0px));gap:6px}
+  #lvl{width:32px;height:32px;font-size:14px;border-width:2.5px}
+  .bar{max-width:calc(50vw - 175px - env(safe-area-inset-left,0px))}
+  .bar .track{height:20px;border-width:2.5px}.bar .track b{font-size:11px;line-height:15px}
+  #hpbar .ico{width:30px;height:30px}
+  #topr{gap:5px}#topr .ibtn{width:32px;height:32px;border-radius:9px;border-width:2.5px}#topr .ibtn svg{width:17px;height:17px}
+  #subbar{top:calc(17px + env(safe-area-inset-top,0px));gap:9px}
+  #subbar .cnt{font-size:12.5px;padding:1px 7px 1px 3px}#subbar .cnt .ico{width:20px;height:20px}
+  #timer{font-size:22px}
+  #bossbar{top:calc(52px + env(safe-area-inset-top,0px));width:min(420px,calc(100vw - 40px))}
+  #bossbar .bn{font-size:11px;margin-bottom:2px}#bossbar .track{height:12px}
+  #toasts{top:calc(54px + env(safe-area-inset-top,0px))}
+  #bossbar:not([hidden])~#toasts{top:calc(88px + env(safe-area-inset-top,0px))}
+  #buffs{top:calc(54px + env(safe-area-inset-top,0px))}
+  #bottom{padding-bottom:calc(5px + env(safe-area-inset-bottom,0px))}
+  #slots{gap:5px;padding:3px 5px;border-radius:12px}
+  #slots .slot{width:38px;height:38px;border-radius:10px;border-width:2.5px}#slots .slot .ico{width:32px;height:32px}
+  #slots .slot .lv{font-size:9px;min-width:14px;padding:1px 3px;right:-5px;bottom:-5px}#slots .slot .lv.max{font-size:8px}
+  .toast{font-size:14px;padding:6px 12px}.toast.big{font-size:16px;padding:8px 16px}
+}
 /* compact screens */
 .phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .phead .ptl{margin-right:auto;word-spacing:-.35em;font:clamp(26px,5vw,40px)/1 var(--title);color:var(--ink);text-shadow:var(--ol-d)}
@@ -1032,6 +1055,7 @@ function measureView(){const c=new THREE.PerspectiveCamera(camera.fov,camera.asp
   // the fog starts near the top edge of the screen and thickens beyond it (the same look as before on a monitor)
   const far=Math.hypot(c.position.y,c.position.z-tc[1]);scene.fog.near=far*.95;scene.fog.far=far*1.9;}
 // enemies appear beyond the farthest corner of the screen: on a monitor that is the old ring, an upright phone pushes it out
+const hudIns=()=>W>H&&H<500?{t:56,b:54,at:62,ab:60}:W<600?{t:96,b:62,at:104,ab:70}:{t:104,b:72,at:112,ab:80};
 const spawnPad=()=>Math.max(0,VIEW.r+6-34);
 function resize(){W=window.innerWidth;H=window.innerHeight;renderer.setSize(W,H,false);camera.aspect=W/H;const a=W/H;
   camera.fov=a<1?50:a<1.4?45:40;
@@ -1549,7 +1573,7 @@ function markVisible(){
   tcam.fov=camera.fov;tcam.aspect=camera.aspect;tcam.near=camera.near;tcam.far=camera.far;tcam.updateProjectionMatrix();
   const cx=P.x+(G.lx||0),cz=P.z+(G.lz||0);camPose(tcam,cx,cz);
   _vp.multiplyMatrices(tcam.projectionMatrix,tcam.matrixWorldInverse);const m=_vp.elements;
-  const top=1-2*(W<600?96:104)/Math.max(H,200),bot=-1+2*(W<600?62:72)/Math.max(H,200);
+  const hi=hudIns(),top=1-2*hi.t/Math.max(H,200),bot=-1+2*hi.b/Math.max(H,200);
   for(const e of enemies){const x=e.x,y=1,z=e.z,w=m[3]*x+m[7]*y+m[11]*z+m[15];if(w<=0){e.vis=false;continue;}
     const px=(m[0]*x+m[4]*y+m[8]*z+m[12])/w,py=(m[1]*x+m[5]*y+m[9]*z+m[13])/w;e.vis=px>-.96&&px<.96&&py>bot&&py<top;}
 }
@@ -2095,7 +2119,7 @@ function hudIcons(){   // the static HUD icons, once the icons exist
 // No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
 // add runs and read them (row-level security on the server), so it is safe to ship in the page.
 const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
-const GAME_VER='2.3';
+const GAME_VER='2.3.1';
 const boardOn=()=>!!(BOARD.url&&BOARD.key);
 if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
 if(!Array.isArray(save.outbox))save.outbox=[];
@@ -2575,7 +2599,7 @@ function draw2d(){
   // arrows at the screen edge for things that are off-screen: lamps (with their boost), chests, elites and the boss.
   // The arrow sits where the line from the screen centre to the target meets the free play area (between the HUDs).
   const mark=(wx,wz,col,img,big,lbl)=>{pv.set(wx,1,wz).project(camera);
-    const top=W<600?104:112,bot=W<600?70:80,inside=Math.abs(pv.x)<.94&&pv.y<1-2*top/H&&pv.y>-1+2*bot/H&&pv.z<1;if(inside)return;
+    const hi=hudIns(),top=hi.at,bot=hi.ab,inside=Math.abs(pv.x)<.94&&pv.y<1-2*top/H&&pv.y>-1+2*bot/H&&pv.z<1;if(inside)return;
     let dx=pv.x*W/2,dy=-pv.y*H/2;if(pv.z>1){dx=-dx;dy=-dy;}
     const cx=W/2,cy=H/2,hw=W/2-30,up=cy-top-24,dn=H-bot-cy-26,kx=Math.abs(dx)>1e-3?hw/Math.abs(dx):1e9,ky=dy<0?up/-dy:dy>0?dn/dy:1e9,k=Math.min(kx,ky);
     const x=cx+dx*k,y=cy+dy*k,a=Math.atan2(dx,-dy),R=big?21:17,p=1+Math.sin(performance.now()/170)*.07;
