@@ -1044,7 +1044,9 @@ let W=1,H=1,camD=28,camBack=.56;
 //   the width on a phone held upright), so an upright phone sees as far to the sides as the genre does;
 // - it looks down steeply (63°) at a point a little behind the hero, so the ground seen behind him is close to the
 //   ground seen ahead (the old 55° camera showed twice as much ahead as behind).
-const CAM_K=10.2,CAM_PITCH=63*Math.PI/180,CAM_SIN=Math.sin(CAM_PITCH),CAM_COS=Math.cos(CAM_PITCH);
+// v2.3.2: the hero's size is the average of the v2.2 size and the v2.3 one on the same screen. Hero share of the short
+// side ~ C/(distance*half): C=75.5 for this 63° camera, 83 for the old 55° one at its old distances (23.3 / 25.3).
+const CAM_K=10.2,CAM_C=75.5,CAM_C_OLD=83,CAM_PITCH=63*Math.PI/180,CAM_SIN=Math.sin(CAM_PITCH),CAM_COS=Math.cos(CAM_PITCH);
 // how far the screen reaches on the ground from the hero: half width, ahead (up the screen), behind, farthest corner
 const VIEW={x:20,up:20,dn:10,r:30};
 function camPose(c,cx,cz){const tz=cz+camBack;c.position.set(cx,.6+camD*CAM_SIN,tz+camD*CAM_COS);c.lookAt(cx,.6,tz);c.updateMatrixWorld();}
@@ -1060,7 +1062,8 @@ const spawnPad=()=>Math.max(0,VIEW.r+6-34);
 function resize(){W=window.innerWidth;H=window.innerHeight;renderer.setSize(W,H,false);camera.aspect=W/H;const a=W/H;
   camera.fov=a<1?50:a<1.4?45:40;
   const half=Math.tan(camera.fov*Math.PI/360)*(a<1?a:1);   // tan of half the view angle across the short side
-  camD=CAM_K/half;camBack=.02*camD;
+  const was=CAM_C_OLD/((a<1?25.3:23.3)*half),now=CAM_C/CAM_K,goal=(was+now)/2;   // hero, % of the short side
+  camD=CAM_C/(goal*half);camBack=.02*camD;
   // the 2D overlay (damage numbers, markers) is drawn at the screen's real pixel density so text stays sharp
   const cd=Math.min(window.devicePixelRatio||1,2);fxc.width=Math.round(W*cd);fxc.height=Math.round(H*cd);ctx.setTransform(cd,0,0,cd,0,0);
   camera.updateProjectionMatrix();measureView();}
@@ -2119,7 +2122,7 @@ function hudIcons(){   // the static HUD icons, once the icons exist
 // No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
 // add runs and read them (row-level security on the server), so it is safe to ship in the page.
 const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
-const GAME_VER='2.3.1';
+const GAME_VER='2.3.2';
 const boardOn=()=>!!(BOARD.url&&BOARD.key);
 if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
 if(!Array.isArray(save.outbox))save.outbox=[];
