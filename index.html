@@ -810,91 +810,141 @@ const NOTE=m=>440*Math.pow(2,(m-69)/12);
 const PROG={night:[[50,[0,3,7]],[46,[0,4,7]],[43,[0,3,7]],[45,[0,4,7]]],boss:[[50,[0,3,7]],[51,[0,4,7]],[50,[0,3,7]],[48,[0,4,7]]]};
 // a slow graveyard melody over the four bars: [step 0..63, MIDI, length in steps]
 const MELODY=[[0,74,6],[6,77,2],[8,76,4],[12,74,4],[16,74,6],[22,70,2],[24,72,4],[28,74,4],[32,79,6],[38,77,2],[40,76,4],[44,74,4],[48,73,8],[56,69,4],[60,73,4]];
-// ---------- music made by the weapons ----------
-// A beat clock runs at 100 BPM and speeds up with attack speed (and with rage). Every weapon is an instrument: when it
-// fires, its note lands on the next free step of the grid (16ths, 8ths or beats, per instrument), in the chord of the
-// moment, louder the higher the weapon's level. Several weapons layer into one piece; the more you carry, the fuller it
-// gets. Weapons that never stop (auras, orbiting things, beams) play their own pattern while you own them.
-// The menu keeps its calm theme. With the music switched off, weapons use their plain sound effects instead.
+// ---------- the soundtrack runs the game ----------
+// One base track (dark synthwave in D minor) always plays and sets the beat for the whole game. Weapons have no timers
+// of their own: each fires on its own rhythm in that track (every 16th, 8th, beat, half bar...) and the shot IS its
+// note, a part laid over the base in the same chords, fuller and louder with the weapon's level. Picking weapons builds
+// the arrangement. Attack speed raises the tempo of the whole track (100 to 140 BPM; haste beyond that makes the rhythms
+// denser), a rage speeds it up for a while. Damage per hit is scaled so each weapon keeps its strength.
+// About 0.12 s before a step, every weapon due on it checks for a target: if it has one, its note is scheduled and the
+// weapon fires exactly on that step; if not, neither happens. With the music off the clock still runs and the weapons
+// use their plain sound effects.
 const mo=o=>Object.assign({to:musBus},o||{});
+const ctn=(r,c,i,o)=>r+12*o+c[((i%c.length)+c.length)%c.length]+12*Math.floor(i/c.length);   // i-th chord tone from octave o
+const rich=l=>l>=8?3:l>=5?2:l>=3?1:0;   // how full a weapon's part is: levels 1-2, 3-4, 5-7, 8
 const VOICE={
-  // drums
-  shotgun:{div:4,play:(d,r,c,k,g)=>{tone(150,.3,'sine',.55*g,-110,d,mo());tone(60,.26,'sine',.3*g,-15,d,mo());nz(.03,.14*g,3500,{type:'highpass',delay:d,to:musBus});}},
-  revolver:{div:4,play:(d,r,c,k,g)=>{nz(.17,.3*g,1800,{delay:d,to:musBus,q:.8,rev:.25});tone(220,.09,'triangle',.18*g,-90,d,mo());}},
-  nailgun:{div:1,play:(d,r,c,k,g)=>{nz(.035,(k%4===1?.12:.07)*g,8500,{type:'highpass',delay:d,to:musBus});}},
-  gatling:{div:1,play:(d,r,c,k,g)=>{nz(k%8===0?.18:.035,(k%8===0?.1:.08)*g,9000,{type:'highpass',delay:d,to:musBus});if(k%4===0)tone(NOTE(r-12),.14,'square',.05*g,0,d,mo({filt:700}));}},
-  knives:{div:2,play:(d,r,c,k,g)=>{nz(.06,.09*g,6200,{q:2,delay:d,to:musBus,attack:.015});}},
-  crossbow:{div:4,play:(d,r,c,k,g)=>{tone(120,.35,'sine',.45*g,-55,d,mo());nz(.12,.2*g,1500,{delay:d+.01,to:musBus,q:1.2,rev:.35});}},
-  ballista:{div:4,play:(d,r,c,k,g)=>{tone(70,.6,'sine',.5*g,-25,d,mo());for(let i=0;i<3;i++)tone(NOTE(r+36+c[i%c.length]),.9,'sine',.05*g,0,d+i*.03,mo({rev:.6}));}},
-  // bass
-  cleaver:{div:2,play:(d,r,c,k,g,spb)=>{tone(NOTE(r-12+[0,12,7,12][k%4]),spb*1.7,'sawtooth',.1*g,0,d,mo({filt:900,q:3}));}},
-  saw:{div:2,play:(d,r,c,k,g,spb)=>{tone(NOTE(r-12+(k%2?7:0)),spb*1.8,'sawtooth',.075*g,0,d,mo({filt:1300,dist:1}));}},
-  mine:{div:4,play:(d,r,c,k,g)=>{tone(NOTE(r-24),.7,'sine',.32*g,-8,d,mo());tone(NOTE(r-12),.25,'triangle',.08*g,0,d,mo());}},
-  // tunes
-  sickle:{div:4,play:(d,r,c,k,g)=>{for(let j=0;j<4;j++)tone(NOTE(r+12+c[j%c.length]+(j>=c.length?12:0)),.6,'triangle',.06*g,0,d+j*.045,mo({rev:.45}));}},
-  tesla:{div:1,play:(d,r,c,k,g,spb)=>{for(let j=0;j<3;j++){const i=k*3+j;tone(NOTE(r+24+c[i%c.length]+12*((i/c.length|0)%2)),spb*1.4,'square',.04*g,0,d+j*spb,mo({filt:3200,rev:.35}));}}},
-  molotov:{div:4,play:(d,r,c,k,g,spb)=>{for(const iv of c)tone(NOTE(r+iv),spb*3,'square',.035*g,0,d,mo({filt:800,attack:.02}));}},
-  icewand:{div:2,play:(d,r,c,k,g)=>{const n=NOTE(r+36+c[k%c.length]);tone(n,.8,'sine',.06*g,0,d,mo({rev:.6}));tone(n*2.76,.35,'sine',.02*g,0,d,mo({rev:.6}));}},
-  shovel:{div:2,play:(d,r,c,k,g)=>{tone(NOTE(r+24+c[(k*2)%c.length]),.16,'sine',.13*g,0,d,mo());tone(NOTE(r+31),.03,'square',.03*g,0,d,mo({filt:3000}));}},
-  bell:{div:4,play:(d,r,c,k,g)=>{const b=NOTE(r+12);[1,2.76,5.4].forEach((m,i)=>tone(b*m,1.4/(i+1),'sine',.09*g/(i+1),0,d,mo({rev:.6})));}},
-  knell:{div:4,play:(d,r,c,k,g)=>{const b=NOTE(r);[1,2.76,5.4,8.9].forEach((m,i)=>tone(b*m,2/(i+1),'sine',.12*g/(i+1),0,d,mo({rev:.7})));tone(NOTE(r-12),.8,'sine',.15*g,0,d,mo());}},
-  ghost:{div:2,play:(d,r,c,k,g,spb)=>{const m=MELODY[k%MELODY.length];tone(NOTE(m[1]),spb*3,'sine',.055*g,0,d,mo({vib:.012,attack:.05,rev:.5}));}},
-  poltergeist:{div:1,play:(d,r,c,k,g)=>{tone(NOTE(r+24+c[k%c.length]+(k%6>2?12:0)),.12,'triangle',.06*g,0,d,mo({rev:.3}));}},
-  turret:{div:1,play:(d,r,c,k,g)=>{tone(NOTE(r+36+c[k%c.length]),.07,'square',.035*g,0,d,mo({filt:5000}));}},
-  battery:{div:2,play:(d,r,c,k,g,spb)=>{tone(NOTE(r+24+c[k%c.length]),spb,'square',.05*g,0,d,mo({filt:2500}));nz(.2,.05*g,600,{sweep:3000,delay:d,to:musBus});}},
-  rocket:{div:2,play:(d,r,c,k,g,spb)=>{nz(.22,.06*g,700,{sweep:3500,delay:d,to:musBus,q:1.5});tone(NOTE(r+12+c[k%c.length]),spb*2,'sawtooth',.045*g,0,d,mo({filt:1800}));}},
-  dragon:{div:2,play:(d,r,c,k,g,spb)=>{for(const iv of c)tone(NOTE(r+iv+(k%2?12:0)),spb*1.6,'sawtooth',.03*g,0,d,mo({filt:1600,dist:1}));tone(120,.2,'sine',.3*g,-60,d,mo());}},
-  beacon:{div:4,play:(d,r,c,k,g,spb)=>{nz(.5,.12*g,400,{type:'lowpass',sweep:90,delay:d,to:musBus,rev:.4});for(let j=0;j<4;j++)tone(NOTE(r+24+c[j%c.length]+(j>2?12:0)),spb*2,'square',.035*g,0,d+j*spb,mo({filt:4000,rev:.4}));}},
-  scythe:{div:4,play:(d,r,c,k,g,spb)=>{nz(.3,.08*g,1400,{sweep:300,q:1.2,delay:d,to:musBus,attack:.06});for(const iv of c)tone(NOTE(r+12+iv),spb*4,'sawtooth',.025*g,0,d,mo({filt:900,ft:'bandpass',q:3,attack:.05,rev:.5}));}},
+  // blades: plucked chords, a buzzing arpeggio, a harp, glassy plucks
+  cleaver:(d,r,c,k,g,spb,L)=>{for(const i of [0,2,1,3].slice(0,L+1))tone(NOTE(ctn(r,c,i,1)),.45,'sawtooth',.045*g,0,d,mo({filt:2000,sweep:500,q:2}));},
+  saw:(d,r,c,k,g,spb,L)=>{const n=ctn(r,c,k,2)+(L>=2&&k%2?12:0);tone(NOTE(n),.08,'square',.022*g,0,d,mo({filt:3200}));if(L>=3&&k%4===0)tone(NOTE(n+7),.08,'square',.012*g,0,d,mo({filt:3200}));},
+  sickle:(d,r,c,k,g,spb,L)=>{for(let j=0,n=3+L*2;j<n;j++)tone(NOTE(ctn(r,c,j,1)),.6,'triangle',.045*g,0,d+j*.04,mo({rev:.45}));},
+  knives:(d,r,c,k,g,spb,L)=>{const n=ctn(r,c,k,3);tone(NOTE(n),.14,'triangle',.04*g,0,d,mo({rev:.25}));if(L>=2)tone(NOTE(n+12),.08,'sine',.015*g,0,d,mo());},
+  // guns: a bell pluck on the back beat, brass stabs, a fast arpeggio, an orchestral hit, a celesta
+  revolver:(d,r,c,k,g,spb,L)=>{const n=ctn(r,c,k%3,2);tone(NOTE(n),.5,'triangle',.06*g,0,d,mo({rev:.35}));tone(NOTE(n),.25,'sine',.04*g,0,d,mo());
+    if(L>=1)tone(NOTE(n),.35,'triangle',.025*g,0,d+spb*3,mo({rev:.4}));if(L>=2)tone(NOTE(n+7),.4,'triangle',.03*g,0,d,mo());if(L>=3)tone(NOTE(n+12),.3,'sine',.025*g,0,d,mo({rev:.5}));},
+  shotgun:(d,r,c,k,g,spb,L)=>{const ns=L>=2?[0,1,2]:[0,2];if(L>=3)ns.push(3);for(const i of ns)for(const det of [-9,9])tone(NOTE(ctn(r,c,i,1)),.28,'sawtooth',.022*g,0,d,mo({filt:1500,sweep:500,det}));},
+  nailgun:(d,r,c,k,g,spb,L)=>{const n=ctn(r,c,[0,1,2,1][k%4],2)+(L>=2&&k%4===0?12:0);tone(NOTE(n),.07,'square',.02*g,0,d,mo({filt:3600}));if(L>=3)tone(NOTE(n),.05,'square',.008*g,0,d+spb*.5,mo({filt:3600}));},
+  crossbow:(d,r,c,k,g,spb,L)=>{nz(.18,.07*g,1200,{delay:d,to:musBus,q:1});for(const i of [0,1,2,3].slice(0,L+1))tone(NOTE(ctn(r,c,i,0)),.5,'sawtooth',.03*g,0,d,mo({filt:1100,sweep:300}));tone(NOTE(r-12),.5,'sine',.12*g,0,d,mo());},
+  icewand:(d,r,c,k,g,spb,L)=>{const n=NOTE(ctn(r,c,k,3));tone(n,.8,'sine',.05*g,0,d,mo({rev:.6}));tone(n*2.76,.35,'sine',.015*g,0,d,mo({rev:.6}));if(L>=2)tone(n*1.5,.6,'sine',.02*g,0,d+spb,mo({rev:.6}));},
+  // elements: a soft pulse (the lantern's pad plays in the base), an electric arpeggio, low brass
+  lantern:(d,r,c,k,g,spb,L)=>{tone(NOTE(ctn(r,c,k,2)),.35,'sine',.03*g,0,d,mo({rev:.5}));},
+  tesla:(d,r,c,k,g,spb,L)=>{for(let j=0,n=[2,3,4,6][L];j<n;j++)tone(NOTE(ctn(r,c,k+j,2)),spb*1.3,'square',.03*g,0,d+j*spb,mo({filt:2800,rev:.3}));},
+  molotov:(d,r,c,k,g,spb,L)=>{for(const iv of c)tone(NOTE(r+iv),spb*5,'square',.025*g,0,d,mo({filt:850,attack:.06}));if(L>=2)tone(NOTE(r-12),spb*5,'sawtooth',.04*g,0,d,mo({filt:500}));},
+  // grave: a marimba figure, a church bell, a theremin counter-melody (the skulls' choir plays in the base)
+  shovel:(d,r,c,k,g,spb,L)=>{[[0],[0,2],[0,1,2],[0,1,2,4]][L].forEach((i,j)=>tone(NOTE(ctn(r,c,k*2+i,2)),.22,'sine',.1*g,0,d+j*spb,mo()));},
+  bell:(d,r,c,k,g,spb,L)=>{const b=NOTE(r+12);[1,2.76,5.4].forEach((m,i)=>tone(b*m,1.4/(i+1),'sine',.08*g/(i+1),0,d,mo({rev:.6})));if(L>=2)tone(NOTE(r+19),1,'sine',.03*g,0,d,mo({rev:.6}));if(L>=3)tone(NOTE(r),1.4,'sine',.06*g,0,d,mo({rev:.6}));},
+  ghost:(d,r,c,k,g,spb,L)=>{const n=ctn(r,c,[0,1,2,1,3,2,1,0][k%8],2);tone(NOTE(n),spb*3,'sine',.05*g,0,d,mo({vib:.012,attack:.05,rev:.5}));if(L>=2)tone(NOTE(n+12),spb*2,'sine',.015*g,0,d,mo({vib:.012,rev:.5}));},
+  // tech: chiptune blips (turret shots), a tuned sub drop (mines), a rising sweep with a note (rockets)
+  turret:(d,r,c,k,g,spb,L)=>{tone(NOTE(ctn(r,c,k,3)),.07,'square',.03*g,0,d,mo({filt:5000}));if(L>=3)tone(NOTE(ctn(r,c,k,3)+12),.05,'square',.012*g,0,d,mo({filt:5000}));},
+  mine:(d,r,c,k,g,spb,L)=>{tone(NOTE(r-24),.7,'sine',.28*g,-8,d,mo());if(L>=2)tone(NOTE(r-12),.3,'triangle',.06*g,0,d,mo());},
+  rocket:(d,r,c,k,g,spb,L)=>{nz(.24,.05*g,700,{sweep:3500,delay:d,to:musBus,q:1.5});tone(NOTE(ctn(r,c,k,1)),spb*2,'sawtooth',.04*g,0,d+spb,mo({filt:1800}));},
+  // superweapons: the two parts of the recipe merged into one signature figure
+  gatling:(d,r,c,k,g,spb,L)=>{tone(NOTE(ctn(r,c,[0,1,2,3,2,1][k%6],2)),.08,'square',.024*g,0,d,mo({filt:4000}));if(k%4===0)for(const det of [-9,9])tone(NOTE(ctn(r,c,k>>2,2)),.35,'triangle',.03*g,0,d,mo({det,rev:.35}));},
+  dragon:(d,r,c,k,g,spb,L)=>{for(const iv of c)tone(NOTE(r+12+iv),spb*1.6,'sawtooth',.026*g,0,d,mo({filt:1700,dist:1,sweep:700}));if(k%2===0)tone(NOTE(r-12),spb*2,'sawtooth',.05*g,0,d,mo({filt:600}));},
+  beacon:(d,r,c,k,g,spb,L)=>{nz(.5,.1*g,400,{type:'lowpass',sweep:90,delay:d,to:musBus,rev:.4});for(let j=0;j<4;j++)tone(NOTE(ctn(r,c,k+j,2)),spb*2,'square',.03*g,0,d+j*spb,mo({filt:3600,rev:.4}));},
+  scythe:(d,r,c,k,g,spb,L)=>{nz(.3,.06*g,1400,{sweep:300,q:1.2,delay:d,to:musBus,attack:.06});for(const iv of c)for(const det of [-7,7])tone(NOTE(r+12+iv),spb*6,'sawtooth',.02*g,0,d,mo({filt:900,ft:'bandpass',q:4,attack:.05,det,rev:.55}));},
+  knell:(d,r,c,k,g,spb,L)=>{const b=NOTE(r);[1,2.76,5.4,8.9].forEach((m,i)=>tone(b*m,2/(i+1),'sine',.11*g/(i+1),0,d,mo({rev:.7})));for(const iv of c)tone(NOTE(r+12+iv),spb*8,'sawtooth',.014*g,0,d,mo({filt:800,ft:'bandpass',q:4,attack:.1,rev:.6}));},
+  poltergeist:(d,r,c,k,g,spb,L)=>{tone(NOTE(ctn(r,c,k,2)+(k%6>2?12:0)),.12,'triangle',.05*g,0,d,mo({rev:.3}));},
+  ballista:(d,r,c,k,g,spb,L)=>{nz(.25,.08*g,1000,{delay:d,to:musBus,q:.8,rev:.4});tone(NOTE(r-12),.7,'sine',.16*g,0,d,mo());for(let i=0;i<4;i++)tone(NOTE(ctn(r,c,i,3)),.9,'sine',.035*g,0,d+i*.05,mo({rev:.6}));},
+  battery:(d,r,c,k,g,spb,L)=>{tone(NOTE(ctn(r,c,k,3)),.08,'square',.03*g,0,d,mo({filt:4500}));if(k%4===0)nz(.2,.04*g,600,{sweep:3000,delay:d,to:musBus});},
 };
-const music={on:false,step:0,next:0,timer:null,mode:'menu',spb:.15,
-  start(){if(!AC||this.on)return;this.on=true;this.step=0;this.next=AC.currentTime+.1;this.spb=60/this.bpm()/4;this.timer=setInterval(()=>this.pump(),20);},
+// does a weapon have something to hit right now (asked just before its step)
+function wantFire(w){const st=w.st,R=(st.radius||0)*S.area;let any=false;
+  switch(w.def.type){
+    case 'melee':return !!nearest(P.x,P.z,st.range*S.area+.6);
+    case 'gun':return st.face?!!nearest(P.x,P.z,24):!!(st.strong?strongest(P.x,P.z,st.range):nearest(P.x,P.z,st.range,null,1));
+    case 'homing':case 'chain':return !!nearest(P.x,P.z,st.range,null,1);
+    case 'boom':return !!nearest(P.x,P.z,st.range*1.3,null,1);
+    case 'lob':case 'storm':return within(P.x,P.z,st.range,1).length>0;
+    case 'nova':case 'aura':forNear(P.x,P.z,R+1.4,e=>{if(!any&&Math.hypot(e.x-P.x,e.z-P.z)<R+e.r)any=true;});return any;
+    case 'minion':return w.minions.some(g=>g.t&&!g.t.dead&&Math.hypot(g.t.x-g.x,g.t.z-g.z)<g.t.r+1.6);
+    case 'mine':return w.mines.length<st.max+S.proj*2;
+    default:return true;}}   // turret deploys, beam ticks
+// a weapon's rhythm: its cooldown becomes a step interval on the grid (1, 2, 3, 4, 6, 8, 12, 16... sixteenths at
+// 100 BPM; very fast weapons fire 2-3 times per step), on its own place in the bar. Damage per hit is scaled by the
+// rounding so the weapon keeps its strength. Haste beyond what the tempo takes (x1.4) shortens the interval.
+const IVS=[1,2,3,4,6,8,12,16,24,32,48,64];
+const OFFS={revolver:4,knives:2,tesla:2,molotov:8,shovel:6,icewand:2,ghost:2,rocket:10,sickle:8,turret:1,poltergeist:1,ballista:4,dragon:2,battery:4};
+function plan(w){const st=w.st,t=w.def.type,hx=Math.max(1,(S.atkSpd||1)/1.4);w.iv2=0;w.multi=1;
+  if(t==='orbit'){w.iv=0;w.comp=1;return;}
+  const q=sec=>{const x=sec/hx/.15;if(x<.75)return {iv:1,m:Math.min(3,Math.max(2,Math.round(1/x)))};let b=1;for(const v of IVS)if(Math.abs(Math.log(v/x))<Math.abs(Math.log(b/x)))b=v;return {iv:b,m:1};};
+  const base=t==='aura'||t==='beam'?st.tick:st.cd,a=q(base);w.iv=a.iv;w.multi=a.m;w.off=(OFFS[w.id]||0)%w.iv;
+  if(t==='turret'){const b=q(st.rate);w.iv2=b.iv;w.multi=1;w.comp=b.iv*.15/b.m/(st.rate/hx);}
+  else w.comp=a.iv*.15/a.m/(base/hx);}
+const music={on:false,timer:null,mode:'menu',pos:0,last:null,sched:0,LA:.12,
+  start(){if(!AC||this.on)return;this.on=true;this.last=null;this.sched=Math.floor(this.pos);this.timer=setInterval(()=>this.sync(),20);},
   stop(){this.on=false;clearInterval(this.timer);},
-  playing(){return this.on&&!!AC&&AC.state==='running'&&save.music!==false&&save.musicVol>.001;},
-  // tempo: 100 BPM, faster with attack speed (up to x1.6) and in a rage
-  bpm(){if(this.mode==='menu')return 96;const k=clamp((S.atkSpd||1)*(G.rage>0?1.2:1),1,1.6);return 100*k*(this.mode==='boss'?1.05:1);},
-  pump(){if(!AC||AC.state!=='running')return;const ahead=AC.currentTime+.09;if(this.next<AC.currentTime-.2)this.next=AC.currentTime+.02;
-    const on=save.music!==false&&save.musicVol>.001;   // switched off: keep the beat counter going but play nothing
-    while(this.next<ahead){if(on)this.play(this.step,this.next);this.spb=60/this.bpm()/4;this.next+=this.spb;this.step++;}},
+  live(){return this.on&&!!AC&&AC.state==='running'&&!G.auto;},
+  playing(){return this.live()&&save.music!==false&&save.musicVol>.001;},
+  tempo(){if(G.state==='menu'||G.state==='dead'||G.state==='board')return 96;return 100*clamp(S.atkSpd||1,1,1.4)*(G.rage>0?1.25:1);},   // BPM
   update(){let m='menu';if(G.state!=='menu'&&G.state!=='dead'&&G.state!=='board'){m='play';for(const e of enemies)if(e.boss&&!e.dead){m='boss';break;}}this.mode=m;},
   chord(st){return PROG[this.mode==='boss'?'boss':'night'][Math.floor(st/16)%4];},
-  gain(w){return w.def.super?1.3+.05*w.lvl:.5+.09*w.lvl;},   // a weapon gets louder with its level
-  // a weapon fired: its note goes on the next free step of its grid; returns false when the music is not playing
-  hit(w){if(!this.playing()||G.auto)return false;const v=VOICE[w.id];if(!v)return false;
-    const now=AC.currentTime,spb=this.spb,div=v.div||1;
-    const k=Math.floor((this.next-(now+.01))/spb);let tq=this.next-k*spb,st=this.step-k;
-    while(((st%div)+div)%div){tq+=spb;st++;}
-    if(w.mq===st)return true;   // this weapon already has a note on that step
-    w.mq=st;w.mk=(w.mk||0)+1;const [root,ch]=this.chord(st);
-    try{v.play(Math.max(0,tq-now),root,ch,w.mk,this.gain(w),spb,st);}catch(e){}
-    return true;},
-  play(st,t){
-    const s16=st%16,bar=Math.floor(st/16)%4,s64=st%64,[root,ch]=this.chord(st),spb=60/this.bpm()/4,M=this.mode,d=Math.max(0,t-AC.currentTime);
-    if(M==='menu'){   // the calm menu theme: pad, slow arpeggio, the graveyard melody, a low drone
+  gain(w){return w.def.super?3.2+.12*w.lvl:1.25+.22*w.lvl;},   // a weapon gets louder with its level
+  // move the beat with the audio clock and schedule the next ~0.12 s: base track and weapon notes
+  sync(){if(!this.live()){this.last=null;return;}const now=AC.currentTime;
+    if(this.last!==null)this.pos+=Math.min(.25,now-this.last)*this.tempo()/15;this.last=now;
+    const spb=15/this.tempo(),hz=this.pos+this.LA/spb;if(this.sched<Math.floor(this.pos))this.sched=Math.floor(this.pos);
+    while(this.sched+1<=hz){const s=++this.sched;this.step(s,now+(s-this.pos)*spb,spb);}},
+  pump(){this.sync();},
+  step(s,t,spb){const d=Math.max(0,t-AC.currentTime),mus=save.music!==false&&save.musicVol>.001;
+    if(mus)try{this.play(s,t);}catch(e){}
+    if(G.state!=='play')return;
+    const [r,c]=this.chord(s);
+    for(const w of P.weapons){if(!w.iv)continue;
+      if(((s-w.off)%w.iv+w.iv)%w.iv===0&&wantFire(w)){(w.sched||(w.sched=new Set())).add(s);if(mus&&w.def.type!=='turret'&&w.def.type!=='beam')this.voice(w,d,r,c,spb);}
+      if(w.iv2&&s%w.iv2===0&&w.turrets&&w.turrets.some(u=>u.landed&&nearest(u.x,u.z,w.st.range,null,1))){(w.sched2||(w.sched2=new Set())).add(s);if(mus)this.voice(w,d,r,c,spb);}}},
+  voice(w,d,r,c,spb){const v=VOICE[w.id];if(!v)return;w.mk=(w.mk||0)+1;try{v(d,r,c,w.mk,this.gain(w),spb,rich(w.lvl));}catch(e){}},
+  // the base track. Menu: a calm theme. In a run it builds up in parts: intro (first 45 s), groove (to 2.5 min), full,
+  // and a darker boss part; every 8 bars a cymbal, fills into the next phrase.
+  play(st,t){const d=Math.max(0,t-AC.currentTime),spb=15/this.tempo(),M=this.mode;
+    const s16=st%16,bar=Math.floor(st/16)%4,s64=st%64,s128=st%128,[root,ch]=this.chord(st);
+    if(M==='menu'){
       if(s16===0){for(const iv of ch)for(const det of [-8,8])tone(NOTE(root+12+iv),spb*16*1.05,'sawtooth',.045,0,d,mo({filt:1700,attack:spb*3,hold:spb*9,det,rev:.45}));
         if(bar===0)tone(NOTE(root-12),spb*64,'sawtooth',.05,0,d,mo({filt:400,attack:1.5,hold:spb*40}));}
       if(s16%2===0){const arp=[0,1,2,1,0,2,1,2],iv=ch[arp[(st>>1)%8]],oct=(s16>>2)%2?36:24;tone(NOTE(root+oct+iv),spb*1.9,'triangle',.07,0,d,mo({filt:4200,rev:.35}));}
       if(Math.floor(st/64)%2===0)for(const [p,n,l] of MELODY)if(p===s64)tone(NOTE(n),spb*l,'triangle',.045,0,d,mo({filt:2200,vib:.005,attack:.03,rev:.5}));
       return;}
-    // the bed under the weapons: a soft pad, a kick on the bar, a quiet off-beat tick; darker with the boss
-    if(s16===0){for(const iv of ch)tone(NOTE(root+12+iv),spb*16*1.05,'sawtooth',.022,0,d,mo({filt:M==='boss'?1900:1400,attack:spb*3,hold:spb*9,det:6,rev:.45}));
-      tone(150,.24,'sine',.32,-110,d,mo());
-      if(M==='boss')tone(NOTE(root-12),spb*16,'sawtooth',.06,0,d,mo({filt:500,dist:1,attack:.1,hold:spb*10}));}
-    if(s16%4===2)nz(.03,.035,8000,{type:'highpass',delay:d,to:musBus});
+    const sec=M==='boss'?3:G.t<45?0:G.t<150?1:2,has=id=>P.weapons.some(w=>w.id===id);
+    // drums
+    if(s128===0&&sec>=1)nz(1.4,.08,6000,{type:'highpass',delay:d,to:musBus,rev:.3});
+    const kick=sec===0?(s16===0||s16===8):sec===1?(s16===0||s16===8||s16===11):s16%4===0;
+    if(kick){tone(150,.28,'sine',sec===0?.3:.46,-112,d,mo());tone(55,.3,'sine',.16,-10,d,mo());}
+    if(sec>=1&&(s16===4||s16===12)){nz(.16,.2,1900,{delay:d,to:musBus,q:.9,rev:.3});tone(190,.08,'triangle',.11,-70,d,mo());}
+    if(sec>=2&&bar===3&&s16>=13)nz(.07,.05+.03*(s16-13),2300,{delay:d,to:musBus,q:1});
+    if(sec===3&&bar===3&&s16>=12)tone(200-(s16-12)*28,.2,'sine',.24,-60,d,mo());
+    if(sec>=1&&(sec>=2||s16%2===0))nz(.03,s16%4===2?.06:.035,8500,{type:'highpass',delay:d,to:musBus});
+    // bass: long notes, then a pulsing line, then rolling sixteenths; distorted for the boss
+    if(sec===0){if(s16===0)tone(NOTE(root-12),spb*15,'sawtooth',.075,0,d,mo({filt:380,attack:.05,hold:spb*9}));}
+    else if(sec===1){if(s16%2===0)tone(NOTE(root-12+[0,0,12,0,0,7,12,0][s16>>1]),spb*1.7,'sawtooth',.09,0,d,mo({filt:850,q:2.5}));}
+    else if(sec===2){tone(NOTE(root-12+(s16===6||s16===14?12:0)),spb*.9,'sawtooth',s16%2?.05:.08,0,d,mo({filt:s16%4===0?1300:900,q:3}));if(s16%4===0)tone(NOTE(root-24),spb*3,'sine',.1,0,d,mo());}
+    else{tone(NOTE(root-12+(s16%8===7?1:0)),spb*.9,'sawtooth',.075,0,d,mo({filt:1000,q:3,dist:1}));if(s16===0)tone(NOTE(root-24),spb*14,'sawtooth',.05,0,d,mo({filt:300,attack:.1,hold:spb*8}));}
+    // pad
+    if(s16===0)for(const iv of ch)for(const det of [-7,7])tone(NOTE(root+12+iv),spb*16*1.05,'sawtooth',sec===0?.016:.02,0,d,mo({filt:M==='boss'?1900:1400,attack:spb*3,hold:spb*9,det,rev:.45}));
+    // arpeggio in the full and boss parts
+    if(sec>=2)tone(NOTE(ctn(root,ch,[0,1,2,3,2,1,0,1][s16%8],2)),spb*.9,'square',.016,0,d,mo({filt:2400,rev:.25}));
+    // the graveyard melody, unless a weapon plays the lead
+    if(sec>=2&&s128<64&&!(has('spotlight')||has('carousel')||has('ghost')))for(const [p,n,l] of MELODY)if(p===s64)tone(NOTE(n),spb*l,'triangle',.038,0,d,mo({filt:2400,vib:.005,attack:.03,rev:.45}));
     // weapons that never stop play their own parts while you own them
-    for(const w of P.weapons){const g=this.gain(w);
-      switch(w.id){
-        case 'lantern':if(s16===0)for(const iv of ch)tone(NOTE(root+24+iv),spb*15,'triangle',.022*g,0,d,mo({attack:spb*4,hold:spb*6,rev:.6,vib:.003}));
-          if(s16%8===4)tone(NOTE(root+36+ch[(st>>3)%ch.length]),spb*3,'sine',.03*g,0,d,mo({rev:.6}));break;
-        case 'skulls':if(s16%8===0){const iv=ch[(st>>3)%ch.length];for(const det of [-7,7])tone(NOTE(root+12+iv),spb*7,'sawtooth',.035*g,0,d,mo({filt:850,ft:'bandpass',q:4,attack:spb*2,det,rev:.5,vib:.004}));}break;
-        case 'grinder':if(s16%2===0)tone(NOTE(root-12+[0,0,12,0,7,0,12,0][s16>>1]),spb*1.7,'sawtooth',.08*g,0,d,mo({filt:1100,q:2.5,dist:1}));break;
-        case 'spotlight':for(const [p,n,l] of MELODY)if(p===s64)tone(NOTE(n),spb*l,'sawtooth',.035*g,0,d,mo({filt:2400,vib:.006,attack:.02,rev:.4}));break;
-        case 'carousel':for(const [p,n,l] of MELODY)if(p===s64){tone(NOTE(n),spb*l,'sawtooth',.04*g,0,d,mo({filt:2800,vib:.006,attack:.02,rev:.4}));tone(NOTE(n+12),spb*l*.6,'square',.015*g,0,d,mo({filt:3000}));}
-          if(s16%2===1)tone(NOTE(root+24+ch[(st>>1)%ch.length]),spb,'triangle',.03*g,0,d,mo({rev:.3}));break;
-      }}
+    for(const w of P.weapons){const g=this.gain(w),L=rich(w.lvl);switch(w.id){
+      case 'lantern':if(s16===0)for(const iv of ch.slice(0,L>=2?3:2))tone(NOTE(root+24+iv),spb*15,'triangle',.02*g,0,d,mo({attack:spb*4,hold:spb*6,rev:.6,vib:.003}));break;
+      case 'skulls':if(s16%8===0){const iv=ch[(st>>3)%ch.length];for(const det of L>=2?[-7,0,7]:[-7,7])tone(NOTE(root+12+iv),spb*7,'sawtooth',.03*g,0,d,mo({filt:850,ft:'bandpass',q:4,attack:spb*2,det,rev:.5,vib:.004}));}break;
+      case 'grinder':if(s16%2===0)tone(NOTE(root-12+[0,0,12,0,7,0,12,0][s16>>1]),spb*1.7,'sawtooth',.07*g,0,d,mo({filt:1100,q:2.5,dist:1}));break;
+      case 'spotlight':for(const [p,n,l] of MELODY)if(p===s64){tone(NOTE(n),spb*l,'sawtooth',.032*g,0,d,mo({filt:2400,vib:.006,attack:.02,rev:.4}));if(L>=3)tone(NOTE(n+12),spb*l,'sine',.012*g,0,d,mo());}break;
+      case 'carousel':for(const [p,n,l] of MELODY)if(p===s64){tone(NOTE(n),spb*l,'sawtooth',.038*g,0,d,mo({filt:2800,vib:.006,attack:.02,rev:.4}));tone(NOTE(n+12),spb*l*.6,'square',.014*g,0,d,mo({filt:3000}));}
+        if(s16%2===1)tone(NOTE(ctn(root,ch,st>>1,3)),spb,'triangle',.025*g,0,d,mo({rev:.3}));break;
+    }}
   }};
-// weapon sounds: with the music on, the shot becomes the weapon's note in the music; otherwise the plain effect
-function wsnd(w,name){if(!music.hit(w))sfx(name);}
+// with the music playing a shot is its note (already scheduled on the beat); otherwise the plain sound effect
+function wsnd(w,name){if(!music.playing())sfx(name);}
 setInterval(()=>{if(AC){music.update();applyVolumes();}},300);
 // Audio unlock: browsers start sound only inside a tap or key press, and iPhones also mute web audio when the side
 // switch is on silent unless a media element is playing. So every tap tries to resume the audio, starts the music
@@ -1456,8 +1506,9 @@ function recompute(){
   S.tagDmg={};S.slots=SLOTS;S.luck=1;(HEROES[P.hero]||HEROES.digger).mods(S);if(S.maxHp<30)S.maxHp=30;
   const c=tagCounts();for(const t in SETS)for(const[need,,fn]of SETS[t])if((c[t]||0)>=need)fn(S);
   if(P.hp>S.maxHp)P.hp=S.maxHp;
+  for(const w of P.weapons)if(w.st)plan(w);
 }
-function calcW(w){const st=Object.assign({},w.def.base);if(w.def.super)st.dmg*=2*(1+0.2*(w.lvl-1));else for(let i=0;i<w.lvl-1;i++)w.def.ups[i][1](st);w.st=st;}
+function calcW(w){const st=Object.assign({},w.def.base);if(w.def.super)st.dmg*=2*(1+0.2*(w.lvl-1));else for(let i=0;i<w.lvl-1;i++)w.def.ups[i][1](st);w.st=st;plan(w);}
 function addWeapon(id){
   const def=WEAPONS[id];const w={id,def,lvl:1,cd:0.4,uid:G.uid++,ang:0,aim:0,tickT:0,st:null,pending:null,mesh:new THREE.Mesh(wgeo(id).geo,wgeo(id).mat),wx:P.x,wz:P.z};
   w.mesh.castShadow=true;w.mesh.scale.setScalar(def.super?2:1.6);scene.add(w.mesh);outline(w.mesh,.03);
@@ -1590,13 +1641,13 @@ function addXp(v){
 
 // ---------- weapons ----------
 const SPIN={orbit:1,aura:1,nova:1,storm:1,minion:1,turret:1,mine:1,beam:1};
-const wDmg=w=>{let m=1;for(const t of w.def.tags){const k=S.tagDmg[t];if(k>m)m=k;}return w.st.dmg*S.dmg*m;};
+const wDmg=w=>{let m=1;for(const t of w.def.tags){const k=S.tagDmg[t];if(k>m)m=k;}return w.st.dmg*S.dmg*m*(w.comp||1);};
 const wCd=w=>w.st.cd/S.atkSpd/(G.rage>0?1.6:1);
 function swing(w,ang){
   const st=w.st,R=st.range*S.area,half=st.arc/2,full=st.arc>=TAU-.01,dmg=wDmg(w);
   forNear(P.x,P.z,R+1.4,e=>{const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||.001;
     if(d<R+e.r&&(full||Math.abs(angDiff(Math.atan2(dx,dz),ang))<half))hurt(e,dmg,dx/d,dz/d,st.kb,w);});
-  if(st.quiet){music.hit(w);if(Math.random()<.6){const r=R*rnd(.5,.9),a2=ang+rnd(-half,half)*(full?1:.8);burst(P.x+Math.sin(a2)*r,1,P.z+Math.cos(a2)*r,2,st.col,6,.09);}if(Math.random()<.3)starFx(P.x+Math.sin(ang)*R*.6,1,P.z+Math.cos(ang)*R*.6,.9,0xffd28a,.06);}
+  if(st.quiet){if(Math.random()<.6){const r=R*rnd(.5,.9),a2=ang+rnd(-half,half)*(full?1:.8);burst(P.x+Math.sin(a2)*r,1,P.z+Math.cos(a2)*r,2,st.col,6,.09);}if(Math.random()<.3)starFx(P.x+Math.sin(ang)*R*.6,1,P.z+Math.cos(ang)*R*.6,.9,0xffd28a,.06);}
   else{slashFx(P.x,P.z,ang,R,st.arc,st.col);wsnd(w,'slash');w.swingT=.2;w.swingA=ang;w.swingArc=full?TAU:st.arc;w.swingR=R;}
 }
 function strongest(x,z,r){let best=null,bh=0;const r2=r*r;for(const e of enemies){if(e.dead||!e.vis)continue;const dx=e.x-x,dz=e.z-z;if(dx*dx+dz*dz<r2&&e.hp>bh){bh=e.hp;best=e;}}return best;}
@@ -1627,7 +1678,10 @@ function updateWeapons(dt){
   const n=P.weapons.length;
   for(let i=0;i<n;i++){
     const w=P.weapons[i],st=w.st,a=i/n*TAU+G.t*.5;
-    w.wx=P.x+Math.sin(a)*1.9;w.wz=P.z+Math.cos(a)*1.9;w.cd-=dt;
+    w.wx=P.x+Math.sin(a)*1.9;w.wz=P.z+Math.cos(a)*1.9;
+    if(w.fireN>0&&w.multi>1){w.bq=w.multi-1;w.bqI=15/music.tempo()/w.multi;w.bqT=w.bqI;}
+    let fire=w.fireN>0;if(!fire&&w.bq>0){w.bqT-=dt;if(w.bqT<=0){w.bq--;w.bqT+=w.bqI;fire=true;}}
+    w.cd=fire?-1:9;if(w.def.type==='aura'||w.def.type==='beam')w.tickT=w.cd;if(w.minions)for(const g of w.minions)g.cd=w.cd;
     switch(w.def.type){
       case 'melee':{
         if(w.pending){w.pending.t-=dt;if(w.pending.t<=0){swing(w,w.pending.ang);w.pending=null;}}
@@ -1647,7 +1701,7 @@ function updateWeapons(dt){
         while(w.minions.length<st.count)w.minions.push({x:P.x+rnd(-2,2),z:P.z+rnd(-2,2),cd:0,seek:0,t:null,a:w.minions.length*2.1,yaw:0});
         const taken=new Set(),dmg=wDmg(w),R=st.radius*S.area;
         for(const g of w.minions){
-          g.cd-=dt;g.seek-=dt;
+          g.seek-=dt;
           if(g.seek<=0||!g.t||g.t.dead){g.seek=.2;g.t=nearest(g.x,g.z,13,taken,1);if(g.t&&Math.hypot(g.t.x-P.x,g.t.z-P.z)>17)g.t=null;}
           if(g.t)taken.add(g.t.id);
           let tx,tz,stop;
@@ -1656,13 +1710,13 @@ function updateWeapons(dt){
           if(d>stop){const sp=Math.min(st.speed*(d>20?4:1),d/dt);g.x+=dx/d*sp*dt;g.z+=dz/d*sp*dt;g.yaw=Math.atan2(dx,dz);}
           else if(g.t&&g.cd<=0){g.cd=wCd(w);const gx=g.x,gz=g.z;
             forNear(gx,gz,R+1.4,e=>{const ex=e.x-gx,ez=e.z-gz,ed=Math.hypot(ex,ez)||.001;if(ed<R+e.r)hurt(e,dmg,ex/ed,ez/ed,st.kb,w);});
-            ringFx(gx,gz,.3,R,.2,0xbfeaff,.6);music.hit(w);}
+            ringFx(gx,gz,.3,R,.2,0xbfeaff,.6);}
         }
         break;}
       case 'turret':{
         if(w.cd<=0){w.cd=wCd(w);if(w.turrets.length>=st.max)w.turrets.shift();w.turrets.push({x:P.x+rnd(-.8,.8),z:P.z+rnd(-.8,.8),life:st.dur,cd:.3,yaw:P.yaw,t0:G.t,mf:0});sfx('whoosh');}
         const dmg=wDmg(w);
-        for(const u of w.turrets){u.life-=dt;u.cd-=dt;if(u.mf>0)u.mf-=dt;
+        for(const u of w.turrets){u.life-=dt;u.cd=w.fire2N>0?-1:9;if(u.mf>0)u.mf-=dt;
           if(!u.landed){if(G.t-u.t0<.3){u.cd=Math.max(u.cd,.05);continue;}u.landed=1;sfx('hit');
             if(!G.auto){smoke(u.x,.2,u.z,4,1,0x3b3142,.45,.4);ringFx(u.x,u.z,.3,2.4,.25,0x9dff8a,.7);chunks(u.x,.3,u.z,3,0x5a4636,4,.12);burst(u.x,.5,u.z,8,0x9dff8a,4,.14);G.shake=Math.max(G.shake,.1);}}
           if(u.cd<=0){const t=nearest(u.x,u.z,st.range,null,1);
@@ -1677,7 +1731,7 @@ function updateWeapons(dt){
         for(const m of w.mines){m.arm-=dt;if(m.arm>0)continue;
           if(Math.hypot(m.x-P.x,m.z-P.z)>45){m.dead=true;continue;}
           let hit=false;forNear(m.x,m.z,2.6,e=>{if(!hit&&Math.hypot(e.x-m.x,e.z-m.z)<e.r+1.1)hit=true;});
-          if(hit){m.dead=true;music.hit(w);explode(m.x,m.z,R,wDmg(w),st.kb,w);}}
+          if(hit){m.dead=true;explode(m.x,m.z,R,wDmg(w),st.kb,w);}}
         w.mines=w.mines.filter(m=>!m.dead);
         break;}
       case 'beam':{
@@ -1730,7 +1784,7 @@ function updateWeapons(dt){
     else m.rotation.y+=angDiff(yaw,m.rotation.y)*Math.min(1,dt*16);
     if(w.recoil>0){w.recoil=Math.max(0,w.recoil-dt*3);mx-=Math.sin(w.aim)*w.recoil;mz-=Math.cos(w.aim)*w.recoil;}
     m.position.set(mx,my,mz);
-    const kick=clamp((w.cd/Math.max(.2,wCd(w))),0,1);m.scale.setScalar((w.def.super?2:1.6)*(1+(w.st.cd>.3?kick*.25:0)));
+    const kick=w.iv>=3?clamp(w.cdf||0,0,1):0;m.scale.setScalar((w.def.super?2:1.6)*(1+kick*kick*.25));
   }
 }
 function updateProjs(dt){
@@ -2008,7 +2062,7 @@ function hudFrame(){
   setTxt('#timer',fmtTime(G.t));setTxt('#kills',fmtNum(G.kills));setTxt('#gold',String(Math.floor(G.coins)));
   if(hudC.late!==(G.t>=900)){hudC.late=G.t>=900;$('#timer').classList.toggle('late',hudC.late);}
   // cooldown shade on slow weapons
-  for(let i=0;i<slotCd.length;i++){const w=P.weapons[i];if(!w)continue;let f=0;if(w.st.cd>=.6&&w.def.type!=='beam'&&w.def.type!=='aura'&&w.def.type!=='orbit')f=clamp(w.cd/wCd(w),0,1);
+  for(let i=0;i<slotCd.length;i++){const w=P.weapons[i];if(!w)continue;let f=0;if(w.iv>=4&&w.def.type!=='beam'&&w.def.type!=='aura')f=clamp(w.cdf||0,0,1);
     const fv=f.toFixed(2);if(slotCd[i]._f!==fv){slotCd[i]._f=fv;slotCd[i].style.setProperty('--c',fv);}}
   // boss health
   let boss=null;for(const e of enemies)if(e.boss&&!e.dead){boss=e;break;}
@@ -2026,7 +2080,7 @@ function hudIcons(){   // the static HUD icons, once the icons exist
 // No IP or device data is sent. The key below is Supabase's public "publishable" key: it can only
 // add runs and read them (row-level security on the server), so it is safe to ship in the page.
 const BOARD={url:'https://pczrainoavvjpgqokdpi.supabase.co',key:'sb_publishable_Ae7pZo_hExm1rsq-RMi56w_41Ev-mC3'};
-const GAME_VER='2.0';
+const GAME_VER='2.1';
 const boardOn=()=>!!(BOARD.url&&BOARD.key);
 if(!save.pid)save.pid=(crypto.randomUUID?crypto.randomUUID():Array.from({length:32},()=>(Math.random()*16|0).toString(16)).join(''));
 if(!Array.isArray(save.outbox))save.outbox=[];
@@ -2238,7 +2292,7 @@ function clearWorld(){
 }
 function startRun(){
   audioInit();music.start();clearWorld();
-  Object.assign(G,{state:'play',startWeapon:save.startWeapon,died:false,fuseSaid:{},t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
+  Object.assign(G,{state:'play',startWeapon:save.startWeapon,died:false,fuseSaid:{},lastStep:undefined,t:0,kills:0,coins:0,shake:0,freeze:0,rage:0,spawnAcc:0,nextWave:30,nextElite:60,nextBoss:300,pendingLv:0,rerolls:0,hpMul:1,dmgMul:1,combo:0,log:{},flash:0,fused:0,newHeroes:[],unlockT:1,auto:null,hurtTotal:0,hurtBy:{},nextPick:12,lateWarned:false,lateSpd:1});
   P.hero=save.unlocked[save.hero]?save.hero:'digger';setHero(P.hero);
   Object.assign(P,{x:0,z:0,lvl:1,xp:0,need:needFor(1),pas:{},yaw:0,dashT:0,dashCd:0,dvx:0,dvz:1,inv:1,revives:save.meta.revive||0,leechN:0});
   addWeapon(WEAPONS[save.startWeapon]&&!WEAPONS[save.startWeapon].super?save.startWeapon:'cleaver');recompute();P.hp=S.maxHp;
@@ -2334,6 +2388,19 @@ function update(dt){
     if(h>0){P.hp+=h;P.regShow=(P.regShow||0)+h;if(P.regShow>=1){const v=Math.floor(P.regShow);P.regShow-=v;
       if(nums.length<120)nums.push({x:P.x,z:P.z,y:2.6,v,t:0,heal:1,dx:0});if(!G.auto){const hb=$('#hpbar');hb.classList.remove('heal');void hb.offsetWidth;hb.classList.add('heal');}}}}}
   director(dt);updateEnemies(dt);markVisible();
+  // the beat: weapons fire on the steps of the soundtrack. With live audio the steps were booked (and their notes
+  // played) by music.step just ahead of time; without audio (balance runs, no sound yet) the clock follows game time.
+  {const live=music.live();if(!live)music.pos+=dt*music.tempo()/15;
+   const cur=Math.floor(music.pos);if(G.lastStep===undefined||cur-G.lastStep>4)G.lastStep=cur-1;
+   for(const w of P.weapons){w.fireN=0;w.fire2N=0;if(!w.iv)continue;
+     for(let s=G.lastStep+1;s<=cur;s++){
+       if(live){if(w.sched&&w.sched.delete(s))w.fireN++;if(w.sched2&&w.sched2.delete(s))w.fire2N++;}
+       else{if(((s-w.off)%w.iv+w.iv)%w.iv===0)w.fireN++;if(w.iv2&&s%w.iv2===0)w.fire2N++;}}
+     if(w.sched&&w.sched.size>12)for(const s of w.sched)if(s<=cur)w.sched.delete(s);
+     if(w.sched2&&w.sched2.size>12)for(const s of w.sched2)if(s<=cur)w.sched2.delete(s);
+     w.cdf=1-(((music.pos-w.off)%w.iv)+w.iv)%w.iv/w.iv;}
+   if(cur!==G.lastStep&&cur%16===0&&!G.auto)ringFx(P.x,P.z,1.2,5.5,.5,0x9f8cff,.22);   // the downbeat of every bar
+   G.lastStep=cur;}
   skullMesh.count=0;bladeMesh.count=0;
   updateWeapons(dt);updateProjs(dt);updateLoot(dt);
   enemies=enemies.filter(e=>!e.dead);
@@ -2466,7 +2533,7 @@ function sync(dt){
   hero.position.set(P.x,bob,P.z);hero.rotation.y=P.yaw;hero.rotation.x=P.dashT>0?.5:P.moving?.14:0;
   for(const l of hero.userData.limbs)l.m.rotation.x=P.moving?Math.sin(t*13+l.ph)*l.amp:Math.sin(t*2+l.ph)*.05;
   hero.visible=!(P.inv>0&&G.state==='play'&&Math.floor(t*20)%2===0);
-  LG.gglow.flat(P.x,.04,P.z,0,5,5,1,.7,.35,.22);
+  {const bp=Math.exp(-((music.pos%4)/4)*7);LG.gglow.flat(P.x,.04,P.z,0,5+bp*.9,5+bp*.9,1,.7,.35,.2+.14*bp);}
   if(!renderer.shadowMap.enabled){LG.blob.flat(P.x,.03,P.z,0,1.9,1.9,0,0,0,.55);for(const e of enemies){if(Math.abs(e.x-P.x)<camD&&Math.abs(e.z-P.z)<camD*1.2)LG.blob.flat(e.x,.03,e.z,0,e.r*2.8,e.r*2.8,0,0,0,.45);}}
   propGlows(t);ambient(t);
   for(const k in LG)LG[k].end();
@@ -2523,7 +2590,7 @@ function applyGfx(){
 }
 function frame(now){
   requestAnimationFrame(frame);
-  const dt=Math.min(.05,(now-last)/1000);last=now;
+  const dt=Math.min(.05,(now-last)/1000);last=now;music.sync();
   if(G.state==='play'){if(G.hitstop>0)G.hitstop-=dt;else update(dt);hudFrame();}
   else if(G.state==='levelup')cardTick(dt);
   if(G.state==='menu'){G.t+=dt;P.yaw=Math.sin(G.t*.5)*.6;}
@@ -2532,7 +2599,7 @@ function frame(now){
 }
 setHero(P.hero);makePortraits();makeIcons();hudIcons();updMute();applyGfx();recompute();showMenu();requestAnimationFrame(frame);
 // small hooks for balancing from the console
-window.NH={G,P,S,WEAPONS,HEROES,save,addXp,give:id=>{const w=addWeapon(id);recompute();hudBuild();return w;},max:()=>{for(const w of P.weapons){if(!w.def.super){w.lvl=MAXL;calcW(w);}}recompute();hudBuild();},skip:s=>{G.t+=s;},step:dt=>{if(G.state==='play'){update(dt);sync();}},start:startRun,spawnEnemy,
+window.NH={G,P,S,WEAPONS,HEROES,save,addXp,music,give:id=>{const w=addWeapon(id);recompute();hudBuild();return w;},max:()=>{for(const w of P.weapons){if(!w.def.super){w.lvl=MAXL;calcW(w);}}recompute();hudBuild();},skip:s=>{G.t+=s;},step:dt=>{if(G.state==='play'){update(dt);sync();}},start:startRun,spawnEnemy,
   // balance-run hooks: simulate without drawing, drive the hero, answer level-up cards
   tick:dt=>{if(G.state==='play')update(dt);},pick:i=>{G.lock=0;pickCard(i);},skipCard:()=>{G.lock=0;skipCard();},rerollCards:()=>{G.lock=0;reroll();},dash,
   setWeapons:(ids,lvl)=>{for(const w of P.weapons.slice())removeWeapon(w);for(const id of ids){const w=addWeapon(id);w.lvl=lvl||1;calcW(w);}recompute();hudBuild();},
